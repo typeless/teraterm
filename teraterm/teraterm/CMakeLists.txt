@@ -10,6 +10,16 @@ add_executable(
   ${CMAKE_CURRENT_BINARY_DIR}/../common/svnversion.h
   WSAAsyncGetAddrInfo.c
   WSAAsyncGetAddrInfo.h
+  agent_jsonrpc.c
+  agent_jsonrpc.h
+  agent_mcp.c
+  agent_mcp.h
+  agent_server.cpp
+  agent_server.h
+  agent_shmem.c
+  agent_shmem.h
+  ../../libs/cJSON/cJSON.c
+  ../../libs/cJSON/cJSON.h
   broadcast.cpp
   broadcast.h
   buffer.c
@@ -382,6 +392,7 @@ target_include_directories(
   ../ttpcmn
   ../susie_plugin
   ../ttptek
+  ../../libs/cJSON
   ${ONIGURUMA_INCLUDE_DIRS}
   ${SFMT_INCLUDE_DIRS}
   )

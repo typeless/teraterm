@@ -40,6 +40,7 @@
 #include "commlib.h"
 #include "codeconv.h"
 #include "asprintf.h"
+#include "agent_server.h"
 
 HWND HVTWin = NULL;
 HWND HTEKWin = NULL;
@@ -203,6 +204,8 @@ void ChangeTitle(void)
 
 	if ((ts.TitleFormat & 4)!=0) // VT
 		wcsncat_s(TempTitle,_countof(TempTitle),L" VT",_TRUNCATE);
+
+	wcsncat_s(TempTitle, _countof(TempTitle), AgentServerTitleTagW(), _TRUNCATE);
 
 	SetWindowTextW(HVTWin,TempTitle);
 

@@ -2,9 +2,9 @@ include_rules
 
 # ttermpro.exe — the main Tera Term application (includes the agent-control TUs).
 COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../common
-INCS = -I$(S)/teraterm/teraterm -I$(S)/teraterm/common -I$(S)/teraterm/ttpfile -I$(S)/teraterm/ttpdlg -I$(S)/teraterm/ttpcmn -I$(S)/teraterm/ttpset -I$(S)/teraterm/susie_plugin -I$(S)/teraterm/ttptek -I$(S)/cygwin/cyglib -I$(S)/libs/oniguruma/src -I$(S)/libs/SFMT -I$(COMMON_GENDIR)
-CFLAGS += -DONIG_STATIC $(INCS)
-CXXFLAGS += -DONIG_STATIC $(INCS)
+INCS = -I$(S)/teraterm/teraterm -I$(S)/teraterm/common -I$(S)/teraterm/ttpfile -I$(S)/teraterm/ttpdlg -I$(S)/teraterm/ttpcmn -I$(S)/teraterm/ttpset -I$(S)/teraterm/susie_plugin -I$(S)/teraterm/ttptek -I$(S)/cygwin/cyglib -I$(S)/libs/oniguruma/src -I$(S)/libs/SFMT -I$(S)/libs/cJSON -I$(COMMON_GENDIR)
+CFLAGS += -DONIG_STATIC -DCJSON_HIDE_SYMBOLS $(INCS)
+CXXFLAGS += -DONIG_STATIC -DCJSON_HIDE_SYMBOLS $(INCS)
 RCFLAGS += /I $(S)/teraterm/teraterm /I $(S)/teraterm/common /I $(S)/teraterm/ttpdlg /I $(S)/teraterm/ttpfile /I $(COMMON_GENDIR)
 
 srcs_cpp += ../../teraterm/common/edithistory.cpp
@@ -15,6 +15,7 @@ srcs_cpp += ../ttpdlg/windowdlg.cpp
 srcs_cpp += ../ttpfile/filesys_win32.cpp
 srcs_cpp += ../ttpfile/protolog.cpp
 srcs_cpp += addsetting.cpp
+srcs_cpp += agent_server.cpp
 srcs_cpp += broadcast.cpp
 srcs_cpp += charset.cpp
 srcs_cpp += checkeol.cpp
@@ -83,6 +84,9 @@ srcs_c += ../ttpset/ttset_keyboard.c
 srcs_c += ../ttptek/tekesc.c
 srcs_c += ../ttptek/tttek.c
 srcs_c += WSAAsyncGetAddrInfo.c
+srcs_c += agent_jsonrpc.c
+srcs_c += agent_mcp.c
+srcs_c += agent_shmem.c
 srcs_c += buffer.c
 srcs_c += clipboar.c
 srcs_c += commlib.c
@@ -119,6 +123,7 @@ srcs_rc += ui_pp.rc
 : foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
 : foreach $(srcs_c) | $(S)/teraterm/common/<gen> |> !cc |> {objs}
 : foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc |> {res}
+: $(S)/libs/cJSON/cJSON.c |> !cc_thirdparty |> {objs}
 
 LDFLAGS += /SUBSYSTEM:WINDOWS
 LDFLAGS += advapi32.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib

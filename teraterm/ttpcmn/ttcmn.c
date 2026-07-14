@@ -554,6 +554,13 @@ static void Log1Bin(PComVar cv, BYTE b)
 	}
 }
 
+static void AgentRecv1(PComVar cv, BYTE b)
+{
+	if (cv->AgentRecv1 != NULL) {
+		cv->AgentRecv1(b);
+	}
+}
+
 int WINAPI CommRead1Byte(PComVar cv, LPBYTE b)
 {
 	int c;
@@ -602,6 +609,7 @@ int WINAPI CommRead1Byte(PComVar cv, LPBYTE b)
 
 	if (c == 1) {
 		Log1Bin(cv, *b);
+		AgentRecv1(cv, *b);
 	}
 
 	return c;

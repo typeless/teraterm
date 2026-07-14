@@ -60,6 +60,7 @@
 #include "unicode.h"
 #include "broadcast.h"
 #include "codeconv.h"
+#include "agent_server.h"
 
 #if defined(_DEBUG) && defined(_MSC_VER)
 #define new ::new(_NORMAL_BLOCK, __FILE__, __LINE__)
@@ -188,6 +189,8 @@ BOOL OnIdle(LONG lCount)
 	int nx, ny;
 	BOOL Size;
 	(void)lCount;
+
+	AgentServerIdle();
 
 	if (cv.Ready)
 	{
@@ -426,6 +429,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPreInst,
 	pVTWin = m_pMainWnd;
 	main_window = m_pMainWnd->m_hWnd;
 
+	// Agent control server (default OFF; starts only if [Agent] Enable=on).
+	AgentServerInit();
+
 	// [Tera Term]セクションのDLG_SYSTEM_FONTをとりあえずセットする
 	SetDialogFont(ts.DialogFontNameW, ts.DialogFontPoint, ts.DialogFontCharSet,
 				  ts.UILanguageFileW, "Tera Term", "DLG_SYSTEM_FONT");
@@ -517,6 +523,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPreInst,
 		}
 	}
 exit_message_loop:
+
+	AgentServerEnd();
 
 	if (pDeleteTimerQueueTimer != NULL) {
 		pDeleteTimerQueueTimer(NULL, hIdleTimer, NULL);

@@ -104,6 +104,7 @@
 #include "recvfiledlg.h"
 #include "setting.h"
 #include "broadcast.h"
+#include "agent_server.h"
 #include "asprintf.h"
 #include "teraprn.h"
 #include "setupdirdlg.h"
@@ -1100,6 +1101,7 @@ void CVTWindow::InitMenu(HMENU *Menu)
 		{ ID_CONTROL_CLOSETEK, "MENU_CONTROL_CLOSETEK" },
 		{ ID_CONTROL_MACRO, "MENU_CONTROL_MACRO" },
 		{ ID_CONTROL_SHOW_MACRO, "MENU_CONTROL_SHOW_MACRO" },
+		{ ID_CONTROL_AGENTSEND, "MENU_CONTROL_AGENTSEND" },
 	};
 	static const DlgTextInfo HelpMenuTextInfo[] = {
 		{ ID_HELP_INDEX2, "MENU_HELP_INDEX" },
@@ -1311,6 +1313,16 @@ void CVTWindow::InitMenuPopup(HMENU SubMenu)
 		else {
 			EnableMenuItem(ControlMenu,ID_CONTROL_MACRO,MF_BYCOMMAND | MF_ENABLED);
 			EnableMenuItem(ControlMenu,ID_CONTROL_SHOW_MACRO,MF_BYCOMMAND | MF_GRAYED);
+		}
+
+		if (AgentServerCanArm()) {
+			EnableMenuItem(ControlMenu, ID_CONTROL_AGENTSEND, MF_BYCOMMAND | MF_ENABLED);
+			CheckMenuItem(ControlMenu, ID_CONTROL_AGENTSEND,
+						  MF_BYCOMMAND | (AgentServerIsSendArmed() ? MF_CHECKED : MF_UNCHECKED));
+		}
+		else {
+			EnableMenuItem(ControlMenu, ID_CONTROL_AGENTSEND, MF_BYCOMMAND | MF_GRAYED);
+			CheckMenuItem(ControlMenu, ID_CONTROL_AGENTSEND, MF_BYCOMMAND | MF_UNCHECKED);
 		}
 
 	}
@@ -4969,6 +4981,15 @@ void CVTWindow::OnShowMacroWindow()
 	RunMacroW(NULL,FALSE);
 }
 
+void CVTWindow::OnControlAgentSend()
+{
+	if (!AgentServerCanArm()) {
+		return;
+	}
+	AgentServerArmSend(!AgentServerIsSendArmed());
+	ChangeTitle(); // refresh the title-bar indicator
+}
+
 void CVTWindow::OnWindowWindow()
 {
 	BOOL Close;
@@ -5548,6 +5569,7 @@ LRESULT CVTWindow::Proc(UINT msg, WPARAM wp, LPARAM lp)
 		case ID_CONTROL_CLOSETEK: OnControlCloseTEK(); break;
 		case ID_CONTROL_MACRO: OnControlMacro(); break;
 		case ID_CONTROL_SHOW_MACRO: OnShowMacroWindow(); break;
+		case ID_CONTROL_AGENTSEND: OnControlAgentSend(); break;
 		case ID_WINDOW_WINDOW: OnWindowWindow(); break;
 		case ID_WINDOW_MINIMIZEALL: OnWindowMinimizeAll(); break;
 		case ID_WINDOW_CASCADEALL: OnWindowCascade(); break;
