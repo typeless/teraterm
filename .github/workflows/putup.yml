@@ -1,0 +1,96 @@
+name: Build (putup / clang-cl + xwin)
+
+# Cross-compile the whole Tera Term distribution for Windows x86_64 (MSVC ABI)
+# from Linux with clang-cl + lld-link against an xwin-splatted MSVC SDK/CRT,
+# driven by putup. No Windows runner or Visual Studio needed.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM toolchain (clang-cl, lld-link, llvm-lib, llvm-rc)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+          for t in clang-cl lld-link llvm-lib llvm-rc; do
+            sudo ln -sf "$(ls /usr/bin/$t-* | sort -V | tail -1)" /usr/local/bin/$t
+          done
+
+      - name: Install putup
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/typeless/putup/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch MSVC CRT + Windows SDK (xwin)
+        run: |
+          curl -fsSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz | tar -xz
+          ./xwin-*/xwin --accept-license --arch x86_64 splat --output "$HOME/.xwin/splat"
+
+      - name: Vendor third-party sources
+        run: |
+          set -eux
+          tmp="$(mktemp -d)"
+          get() { curl -fsSL "$1" -o "$tmp/$2"; }
+          merge() { mkdir -p "libs/$2" && cp -a "$tmp/$1/." "libs/$2/"; }
+
+          get https://github.com/kkos/oniguruma/releases/download/v6.9.10/onig-6.9.10.tar.gz onig.tgz
+          tar -xzf "$tmp/onig.tgz" -C "$tmp"; merge onig-6.9.10 oniguruma
+
+          # SFMT from the official GitHub mirror; the hiroshima-u academic server
+          # returns HTTP 415 to CI runners.
+          get https://github.com/MersenneTwister-Lab/SFMT/archive/refs/tags/1.5.1.tar.gz sfmt.tgz
+          tar -xzf "$tmp/sfmt.tgz" -C "$tmp"; merge SFMT-1.5.1 SFMT
+
+          # zlib + LibreSSL from GitHub too; zlib.net / openbsd ftp return HTTP 415
+          # to CI runners. The LibreSSL release asset is the same distribution
+          # tarball as the openbsd ftp one.
+          get https://github.com/madler/zlib/archive/refs/tags/v1.3.2.tar.gz zlib.tgz
+          tar -xzf "$tmp/zlib.tgz" -C "$tmp"; merge zlib-1.3.2 zlib
+
+          get https://github.com/libressl/portable/releases/download/v4.2.1/libressl-4.2.1.tar.gz libressl.tgz
+          tar -xzf "$tmp/libressl.tgz" -C "$tmp"; merge libressl-4.2.1 libressl
+
+          get https://github.com/P-H-C/phc-winner-argon2/archive/refs/tags/20190702.tar.gz argon2.tgz
+          tar -xzf "$tmp/argon2.tgz" -C "$tmp"; merge phc-winner-argon2-20190702 argon2
+
+          get https://github.com/DaveGamble/cJSON/archive/v1.7.14.zip cjson.zip
+          unzip -q "$tmp/cjson.zip" -d "$tmp"; merge cJSON-1.7.14 cJSON
+
+          rm -rf "$tmp"
+
+      - name: Build
+        run: |
+          export XWIN_SPLAT="$HOME/.xwin/splat"
+          putup configure --config configs/xwin.config -B build-win
+          # putup 0.1.0 does not always order $(S)-path lib deps on a cold build;
+          # a second pass converges (a no-op once everything is up to date).
+          putup -B build-win || putup -B build-win
+
+      - name: Verify build output
+        run: |
+          exe="$(find build-win -name '*.exe' | wc -l)"
+          dll="$(find build-win -name '*.dll' | wc -l)"
+          echo "built ${exe} exe + ${dll} dll"
+          find build-win \( -name '*.exe' -o -name '*.dll' \) | sort
+          test "$exe" -ge 8
+          test "$dll" -ge 20
+          file build-win/teraterm/teraterm/ttermpro.exe | grep -q 'PE32+'
+          file build-win/ttssh2/ttxssh/ttxssh.dll | grep -q 'PE32+'
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: teraterm-windows-x86_64
+          path: |
+            build-win/**/*.exe
+            build-win/**/*.dll
