@@ -1,0 +1,13 @@
+include_rules
+
+# TTXAlwaysOnTop.dll — sample TTX plugin (exports TTXBind via __declspec(dllexport)).
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm
+
+srcs_c += TTXAlwaysOnTop.c
+
+: foreach $(srcs_c) |> !cc |> {objs}
+
+LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXAlwaysOnTop.lib
+LDFLAGS += user32.lib gdi32.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib
+LDFLAGS += shlwapi.lib comctl32.lib winspool.lib winmm.lib imm32.lib version.lib setupapi.lib imagehlp.lib gdiplus.lib
+: {objs} $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib |> !link |> TTXAlwaysOnTop.dll | TTXAlwaysOnTop.lib <implib>

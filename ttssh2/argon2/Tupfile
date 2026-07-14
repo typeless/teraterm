@@ -1,0 +1,14 @@
+include_rules
+
+# argon2 20190702 (vendored third-party), reference implementation (no SSE/opt).
+CFLAGS += -I$(S)/libs/argon2/include -I$(S)/libs/argon2/src -DARGON2_NO_THREADS
+
+srcs += ../../libs/argon2/src/argon2.c
+srcs += ../../libs/argon2/src/core.c
+srcs += ../../libs/argon2/src/encoding.c
+srcs += ../../libs/argon2/src/ref.c
+srcs += ../../libs/argon2/src/thread.c
+srcs += ../../libs/argon2/src/blake2/blake2b.c
+
+: foreach $(srcs) |> !cc_thirdparty |> {objs}
+: {objs} |> !ar |> argon2.$(_lib)

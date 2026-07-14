@@ -1,0 +1,26 @@
+include_rules
+
+# oniguruma 6.9.10 (vendored third-party), static build. ONIG_STATIC makes the
+# ONIG_EXTERN symbols plain `extern` (no dllimport/dllexport) for static linking.
+# config.h comes from the shipped x64 Windows config; HAVE_CONFIG_H gates it.
+ONIG = $(S)/libs/oniguruma/src
+CFLAGS += -DONIG_STATIC -DHAVE_CONFIG_H -I$(TUP_VARIANT_OUTPUTDIR) -I$(ONIG)
+
+: src/config.h.win64 |> ^ GEN config.h^ cp %f %o |> config.h <onigcfg>
+
+srcs += src/regparse.c src/regcomp.c src/regexec.c src/regenc.c src/regerror.c
+srcs += src/regext.c src/regsyntax.c src/regtrav.c src/regversion.c src/st.c
+srcs += src/reggnu.c src/regposix.c src/regposerr.c
+srcs += src/unicode.c src/unicode_unfold_key.c src/unicode_fold1_key.c
+srcs += src/unicode_fold2_key.c src/unicode_fold3_key.c
+srcs += src/ascii.c src/utf8.c src/utf16_be.c src/utf16_le.c src/utf32_be.c src/utf32_le.c
+srcs += src/euc_jp.c src/euc_jp_prop.c src/sjis.c src/sjis_prop.c
+srcs += src/iso8859_1.c src/iso8859_2.c src/iso8859_3.c src/iso8859_4.c
+srcs += src/iso8859_5.c src/iso8859_6.c src/iso8859_7.c src/iso8859_8.c
+srcs += src/iso8859_9.c src/iso8859_10.c src/iso8859_11.c src/iso8859_13.c
+srcs += src/iso8859_14.c src/iso8859_15.c src/iso8859_16.c
+srcs += src/euc_tw.c src/euc_kr.c src/big5.c src/gb18030.c src/koi8_r.c src/cp1251.c
+srcs += src/onig_init.c
+
+: foreach $(srcs) | <onigcfg> |> !cc_thirdparty |> {objs}
+: {objs} |> !ar |> onig.$(_lib)

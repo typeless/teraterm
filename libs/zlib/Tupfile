@@ -1,0 +1,8 @@
+include_rules
+
+# zlib 1.3.2 (vendored third-party).
+srcs += adler32.c compress.c crc32.c deflate.c gzclose.c gzlib.c gzread.c gzwrite.c
+srcs += infback.c inffast.c inflate.c inftrees.c trees.c uncompr.c zutil.c
+
+: foreach $(srcs) |> !cc_thirdparty |> {objs}
+: {objs} |> !ar |> z.$(_lib)

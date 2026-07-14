@@ -1,0 +1,9 @@
+include_rules
+
+# ttreg: standalone console tool. wmain entry (wide argv); uses COM shell-link
+# (shobjidl/shlguid) + registry APIs, so it needs the shell/COM/registry libs.
+LDFLAGS += /SUBSYSTEM:CONSOLE /ENTRY:wmainCRTStartup
+LDFLAGS += ole32.lib oleaut32.lib uuid.lib shell32.lib advapi32.lib user32.lib
+
+: foreach ttreg.cpp |> !cxx |> {objs}
+: {objs} |> !link |> ttreg$(_exe)

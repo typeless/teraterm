@@ -1,0 +1,13 @@
+include_rules
+
+# TTXtest.dll — the canonical sample TTX extension (project name "TTXtest").
+# Standalone: no common_static/ttpcmn (Winsock is only referenced in comments).
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm
+
+srcs_c += ttxtest.c
+
+: foreach $(srcs_c) |> !cc |> {objs}
+
+LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXtest.lib
+LDFLAGS += user32.lib gdi32.lib advapi32.lib shell32.lib comdlg32.lib
+: {objs} |> !link |> TTXtest.dll | TTXtest.lib <implib>

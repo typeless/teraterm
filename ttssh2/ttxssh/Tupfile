@@ -1,0 +1,67 @@
+include_rules
+
+# ttxssh.dll — SSH extension (TTX plugin). Links LibreSSL crypto + zlib +
+# libsshagentc + common_static + ttpcmn. Exports via ttxssh.def.
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../../teraterm/common
+INCS = -I$(COMMON_GENDIR) -I$(S)/ttssh2/ttxssh -I$(S)/teraterm/teraterm -I$(S)/teraterm/common -I$(S)/teraterm/ttpcmn -I$(S)/ttssh2/matcher -I$(S)/ttssh2/libsshagentc -I$(S)/ttssh2/argon2 -I$(S)/libs/include -I$(S)/libs/zlib -I$(S)/libs/libressl/include
+CFLAGS += $(INCS)
+CXXFLAGS += $(INCS)
+RCFLAGS += /I $(COMMON_GENDIR) /I $(S)/ttssh2/ttxssh /I $(S)/teraterm/common /I $(S)/teraterm/teraterm
+
+srcs_cpp += ../../teraterm/common/edithistory.cpp
+srcs_cpp += win32helper_u8.cpp
+srcs_c += ../../teraterm/common/compat_w95_vs2005.c
+srcs_c += ../../teraterm/teraterm/WSAAsyncGetAddrInfo.c
+srcs_c += arc4random.c
+srcs_c += auth.c
+srcs_c += bcrypt_pbkdf.c
+srcs_c += blowfish.c
+srcs_c += buffer.c
+srcs_c += chacha.c
+srcs_c += cipher-3des1.c
+srcs_c += cipher-chachapoly-libcrypto.c
+srcs_c += cipher-ctr.c
+srcs_c += cipher.c
+srcs_c += comp.c
+srcs_c += crypt.c
+srcs_c += digest.c
+srcs_c += dns.c
+srcs_c += ed25519.c
+srcs_c += fwd-socks.c
+srcs_c += fwd.c
+srcs_c += fwdui.c
+srcs_c += hash.c
+srcs_c += hmac.c
+srcs_c += hostkey.c
+srcs_c += hosts.c
+srcs_c += kex.c
+srcs_c += key.c
+srcs_c += keyfiles-putty.c
+srcs_c += keyfiles.c
+srcs_c += mac.c
+srcs_c += openbsd-compat.c
+srcs_c += pkt.c
+srcs_c += poly1305.c
+srcs_c += sftp.c
+srcs_c += smult_curve25519_ref.c
+srcs_c += sntrup761.c
+srcs_c += ssh.c
+srcs_c += ssherr.c
+srcs_c += ttxssh.c
+srcs_c += util.c
+srcs_c += x11util.c
+srcs_c += ../matcher/matcher.c
+
+srcs_rc += ttxssh-version.rc
+srcs_rc += ttxssh.rc
+srcs_rc += ../../teraterm/common/edithistory.rc
+
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: foreach $(srcs_c) | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc |> {res}
+
+LDFLAGS += /DLL /DEF:$(S)/ttssh2/ttxssh/ttxssh.def /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/ttxssh.lib /SUBSYSTEM:WINDOWS
+LDFLAGS += kernel32.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib comctl32.lib ws2_32.lib crypt32.lib bcrypt.lib secur32.lib
+LDFLAGS += shlwapi.lib setupapi.lib imagehlp.lib gdiplus.lib winmm.lib imm32.lib version.lib winspool.lib
+LIBS = $(S)/teraterm/common/common_static.lib $(S)/ttssh2/libsshagentc/sshagentc/libsshagentc.lib $(S)/teraterm/ttpcmn/ttpcmn.lib $(S)/libs/libressl/crypto.lib $(S)/libs/zlib/z.lib $(S)/ttssh2/argon2/argon2.lib
+: {objs} {res} $(LIBS) |> !link |> ttxssh.dll | ttxssh.lib <implib>

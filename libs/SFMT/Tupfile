@@ -1,0 +1,7 @@
+include_rules
+
+# SFMT 1.5.1 (vendored third-party). Single source; MEXP selects the period.
+CFLAGS += -DSFMT_MEXP=19937
+
+: foreach SFMT.c |> !cc_thirdparty |> {objs}
+: {objs} |> !ar |> sfmt.$(_lib)

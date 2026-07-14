@@ -1,0 +1,21 @@
+include_rules
+
+# TTXProxy.dll: TTX proxy plugin (CMake project "TTXProxy", PREFIX "").
+# Links common_static + ttpcmn import lib; exports TTXBind via TTX.def.
+# No tt-version.h/svnversion.h use, so no <gen> order-dep.
+
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/TTProxy/YCL/include -I$(S)/TTProxy
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/TTProxy/YCL/include -I$(S)/TTProxy
+RCFLAGS += /I $(S)/TTProxy
+
+srcs_cpp += StdAfx.cpp
+srcs_cpp += TTProxy.cpp
+srcs_rc  += TTProxy.rc
+
+: foreach $(srcs_cpp) |> !cxx |> {objs}
+: foreach $(srcs_rc)  |> !rc  |> {res}
+
+LDFLAGS += /SUBSYSTEM:WINDOWS /DLL /DEF:$(S)/TTProxy/TTX.def /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXProxy.lib
+LDFLAGS += kernel32.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib comctl32.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib |> !link |> TTXProxy.dll | TTXProxy.lib <implib>

@@ -1,0 +1,46 @@
+include_rules
+
+# ttpmacro.exe — Tera Term macro (TTL) interpreter. GUI app (WIN32 in CMake).
+# Links common_static + ttpcmn import lib, plus oniguruma/SFMT and libressl crypto
+# (ttmenc2.c uses openssl EVP/HMAC/SHA/PBKDF2). svnversion.h is generated in
+# common's build dir and reached via tt-version.h from ttl.cpp and ttm-version.rc.
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../common
+
+INCS = -I$(S)/teraterm/ttpmacro -I$(S)/teraterm/common -I$(S)/teraterm/ttpfile -I$(S)/libs/oniguruma/src -I$(S)/libs/SFMT -I$(S)/libs/libressl/include -I$(COMMON_GENDIR)
+CFLAGS += -DONIG_STATIC $(INCS)
+CXXFLAGS += -DONIG_STATIC $(INCS)
+RCFLAGS += /I $(S)/teraterm/common /I $(COMMON_GENDIR)
+
+srcs_cpp += errdlg.cpp
+srcs_cpp += inpdlg.cpp
+srcs_cpp += ListDlg.cpp
+srcs_cpp += msgdlg.cpp
+srcs_cpp += statdlg.cpp
+srcs_cpp += ttl.cpp
+srcs_cpp += ttl_gui.cpp
+srcs_cpp += ttmacro.cpp
+srcs_cpp += ttmdlg.cpp
+srcs_cpp += ttmmain.cpp
+srcs_cpp += ttmparse.cpp
+
+srcs_c += ttmbuff.c
+srcs_c += ttmdde.c
+srcs_c += ttmenc.c
+srcs_c += ttmenc2.c
+srcs_c += ttmlib.c
+srcs_c += wait4all.c
+srcs_c += ../common/ttlib.c
+srcs_c += ../common/compat_w95_vs2005.c
+
+srcs_rc += ttpmacro.rc
+srcs_rc += ttm-version.rc
+srcs_rc += ttmacro_manifest.rc
+
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: foreach $(srcs_c)  | $(S)/teraterm/common/<gen> |> !cc  |> {objs}
+: foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc  |> {res}
+
+LDFLAGS += /SUBSYSTEM:WINDOWS
+LDFLAGS += advapi32.lib bcrypt.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib $(S)/libs/oniguruma/onig.lib $(S)/libs/SFMT/sfmt.lib $(S)/libs/libressl/crypto.lib |> !link |> ttpmacro.exe

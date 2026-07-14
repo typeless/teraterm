@@ -1,0 +1,61 @@
+include_rules
+
+# Generated version stamp: reuse the existing perl generator to emit svnversion.h
+# into this directory's build output. common's objects order-depend on it (<gen>).
+GENDIR = $(TUP_VARIANT_OUTPUTDIR)
+# svnrev.pl also emits sourcetree_info.bat (default name, into CWD) -> redirect it
+# into the build dir so it does not pollute the source tree.
+: |> ^ GEN svnversion.h^ perl $(S)/buildtools/svnrev/svnrev.pl --root $(S) --header %o --bat $(TUP_VARIANT_OUTPUTDIR)/sourcetree_info.bat --architecture x86_64 |> svnversion.h | sourcetree_info.bat <gen>
+
+# common headers are included ""-style from each source's own dir (automatic);
+# sibling dirs and the generated-header dir are added explicitly.
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/teraterm/susie_plugin -I$(GENDIR)
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/teraterm/susie_plugin -I$(GENDIR)
+
+srcs_cpp += ../susie_plugin/libsusieplugin.cpp
+srcs_cpp += ../teraterm/unicode.cpp
+srcs_cpp += asprintf.cpp
+srcs_cpp += bitmap.cpp
+srcs_cpp += codeconv.cpp
+srcs_cpp += codeconv_mb.cpp
+srcs_cpp += compat_win.cpp
+srcs_cpp += comportinfo.cpp
+srcs_cpp += ddelib.cpp
+srcs_cpp += directx.cpp
+srcs_cpp += dlglib_cpp.cpp
+srcs_cpp += dlglib_tmpl.cpp
+srcs_cpp += dllutil.cpp
+srcs_cpp += fileread.cpp
+srcs_cpp += getcontent.cpp
+srcs_cpp += history_store.cpp
+srcs_cpp += inifile_com.cpp
+srcs_cpp += makeoutputstring.cpp
+srcs_cpp += resize_helper.cpp
+srcs_cpp += tipwin.cpp
+srcs_cpp += tipwin2.cpp
+srcs_cpp += tmfc.cpp
+srcs_cpp += tmfc_frame.cpp
+srcs_cpp += tmfc_propdlg.cpp
+srcs_cpp += tmfc_property.cpp
+srcs_cpp += ttcommdlg.cpp
+srcs_cpp += ttdebug.cpp
+srcs_cpp += ttdup.cpp
+srcs_cpp += ttgdiplus.cpp
+srcs_cpp += ttlib_charset.cpp
+srcs_cpp += ttlib_static_cpp.cpp
+srcs_cpp += ttlib_static_dir.cpp
+srcs_cpp += ttlib_types.cpp
+srcs_cpp += tttext.cpp
+srcs_cpp += tttypes_termid.cpp
+srcs_cpp += win32helper.cpp
+
+srcs_c += dlglib.c
+srcs_c += i18n.c
+srcs_c += i18n_static.c
+srcs_c += ttknownfolders.c
+srcs_c += ttlib.c
+srcs_c += ttlib_static.c
+
+: foreach $(srcs_cpp) | <gen> |> !cxx |> {objs}
+: foreach $(srcs_c) | <gen> |> !cc |> {objs}
+: {objs} |> !ar |> common_static.$(_lib) <lib>

@@ -1,0 +1,22 @@
+include_rules
+
+# ttxkanjimenu.dll: Kanji-encoding menu TTX plugin (CMake target "ttxkanjimenu", PREFIX "").
+# Exports TTXBind via __declspec(dllexport) (no .def). ttxkanjimenu.h -> tt-version.h ->
+# svnversion.h, so the .c and .rc order-depend on common's generated <gen>.
+
+KANJI_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../teraterm/common
+
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(KANJI_GENDIR)
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(KANJI_GENDIR)
+RCFLAGS += /I $(S)/teraterm/common /I $(KANJI_GENDIR)
+
+srcs_c  += ttxkanjimenu.c
+srcs_rc += ttxkanjimenu.rc
+
+: foreach $(srcs_c)  | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc |> {res}
+
+LDFLAGS += /SUBSYSTEM:WINDOWS /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/ttxkanjimenu.lib
+LDFLAGS += kernel32.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib comctl32.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib |> !link |> ttxkanjimenu.dll | ttxkanjimenu.lib <implib>

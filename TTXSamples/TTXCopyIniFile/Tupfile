@@ -1,0 +1,12 @@
+include_rules
+
+# TTXCopyIniFile.dll — standalone sample TTX plugin (no common_static/ttpcmn).
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm
+
+srcs_c += TTXCopyIniFile.c
+
+: foreach $(srcs_c) |> !cc |> {objs}
+
+LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXCopyIniFile.lib
+LDFLAGS += user32.lib gdi32.lib advapi32.lib shell32.lib comdlg32.lib
+: {objs} |> !link |> TTXCopyIniFile.dll | TTXCopyIniFile.lib <implib>

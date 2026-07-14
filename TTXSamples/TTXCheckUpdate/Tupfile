@@ -1,0 +1,25 @@
+include_rules
+
+# TTXCheckUpdate.dll — links common_static + ttpcmn + wininet; bundles vendored cJSON.
+# ttxcheckupdate.c includes tt-version.h -> svnversion.h (generated in common's build dir).
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../../teraterm/common
+CFLAGS += -DCJSON_HIDE_SYMBOLS
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/libs/cJSON -I$(COMMON_GENDIR)
+CXXFLAGS += -DCJSON_HIDE_SYMBOLS
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/libs/cJSON -I$(COMMON_GENDIR)
+RCFLAGS += /I $(S)/TTXSamples/TTXCheckUpdate
+
+srcs_c += ttxcheckupdate.c
+srcs_cpp += parse.cpp
+srcs_rc += resource.rc
+
+: foreach $(srcs_c) | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: $(S)/libs/cJSON/cJSON.c |> !cc_thirdparty |> {objs}
+: foreach $(srcs_rc) |> !rc |> {res}
+
+LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXCheckUpdate.lib
+LDFLAGS += wininet.lib
+LDFLAGS += user32.lib gdi32.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib
+LDFLAGS += shlwapi.lib comctl32.lib winspool.lib winmm.lib imm32.lib version.lib setupapi.lib imagehlp.lib gdiplus.lib
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib |> !link |> TTXCheckUpdate.dll | TTXCheckUpdate.lib <implib>

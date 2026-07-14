@@ -1,0 +1,7 @@
+include_rules
+
+# cyglib: small static lib (cygterm client helper), used by ttermpro.
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/teraterm/susie_plugin
+
+: foreach cyglib.c |> !cc |> {objs}
+: {objs} |> !ar |> cyglib.$(_lib)

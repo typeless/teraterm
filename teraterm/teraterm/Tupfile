@@ -1,0 +1,126 @@
+include_rules
+
+# ttermpro.exe — the main Tera Term application (includes the agent-control TUs).
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../common
+INCS = -I$(S)/teraterm/teraterm -I$(S)/teraterm/common -I$(S)/teraterm/ttpfile -I$(S)/teraterm/ttpdlg -I$(S)/teraterm/ttpcmn -I$(S)/teraterm/ttpset -I$(S)/teraterm/susie_plugin -I$(S)/teraterm/ttptek -I$(S)/cygwin/cyglib -I$(S)/libs/oniguruma/src -I$(S)/libs/SFMT -I$(COMMON_GENDIR)
+CFLAGS += -DONIG_STATIC $(INCS)
+CXXFLAGS += -DONIG_STATIC $(INCS)
+RCFLAGS += /I $(S)/teraterm/teraterm /I $(S)/teraterm/common /I $(S)/teraterm/ttpdlg /I $(S)/teraterm/ttpfile /I $(COMMON_GENDIR)
+
+srcs_cpp += ../../teraterm/common/edithistory.cpp
+srcs_cpp += ../ttpcmn/ttcmn_dup.cpp
+srcs_cpp += ../ttpdlg/serialdlg.cpp
+srcs_cpp += ../ttpdlg/windlg.cpp
+srcs_cpp += ../ttpdlg/windowdlg.cpp
+srcs_cpp += ../ttpfile/filesys_win32.cpp
+srcs_cpp += ../ttpfile/protolog.cpp
+srcs_cpp += addsetting.cpp
+srcs_cpp += broadcast.cpp
+srcs_cpp += charset.cpp
+srcs_cpp += checkeol.cpp
+srcs_cpp += clipboarddlg.cpp
+srcs_cpp += coding_pp.cpp
+srcs_cpp += color_sample.cpp
+srcs_cpp += commentdlg.cpp
+srcs_cpp += debug_pp.cpp
+srcs_cpp += dnddlg.cpp
+srcs_cpp += externalsetup.cpp
+srcs_cpp += filesys.cpp
+srcs_cpp += filesys_log.cpp
+srcs_cpp += filesys_proto.cpp
+srcs_cpp += font_pp.cpp
+srcs_cpp += ftdlg.cpp
+srcs_cpp += ftdlg_lite.cpp
+srcs_cpp += general_pp.cpp
+srcs_cpp += log_pp.cpp
+srcs_cpp += logdlg.cpp
+srcs_cpp += mouse_pp.cpp
+srcs_cpp += plugin_pp.cpp
+srcs_cpp += prnabort.cpp
+srcs_cpp += protodlg.cpp
+srcs_cpp += recvfiledlg.cpp
+srcs_cpp += scp.cpp
+srcs_cpp += sendfiledlg.cpp
+srcs_cpp += sendmem.cpp
+srcs_cpp += serial_pp.cpp
+srcs_cpp += setupdirdlg.cpp
+srcs_cpp += tcpip_pp.cpp
+srcs_cpp += tekfont_pp.cpp
+srcs_cpp += tekwin.cpp
+srcs_cpp += teraprn.cpp
+srcs_cpp += teraterm.cpp
+srcs_cpp += term_pp.cpp
+srcs_cpp += theme_pp.cpp
+srcs_cpp += themedlg.cpp
+srcs_cpp += themefile.cpp
+srcs_cpp += tslib.cpp
+srcs_cpp += ttplug.cpp
+srcs_cpp += ui_pp.cpp
+srcs_cpp += vtdraw.cpp
+srcs_cpp += vtwin.cpp
+srcs_cpp += win_pp.cpp
+
+srcs_c += ../../teraterm/common/compat_w95_vs2005.c
+srcs_c += ../ttpcmn/ttcmn_static.c
+srcs_c += ../ttpdlg/aboutdlg.c
+srcs_c += ../ttpdlg/choosefontdlg.c
+srcs_c += ../ttpdlg/generaldlg.c
+srcs_c += ../ttpdlg/hostdlg.c
+srcs_c += ../ttpdlg/keyboarddlg.c
+srcs_c += ../ttpdlg/tcpipdlg.c
+srcs_c += ../ttpdlg/termdlg.c
+srcs_c += ../ttpdlg/ttdlg.c
+srcs_c += ../ttpfile/bplus.c
+srcs_c += ../ttpfile/ftlib.c
+srcs_c += ../ttpfile/kermit.c
+srcs_c += ../ttpfile/quickvan.c
+srcs_c += ../ttpfile/raw.c
+srcs_c += ../ttpfile/xmodem.c
+srcs_c += ../ttpfile/ymodem.c
+srcs_c += ../ttpfile/zmodem.c
+srcs_c += ../ttpset/ttset.c
+srcs_c += ../ttpset/ttset_keyboard.c
+srcs_c += ../ttptek/tekesc.c
+srcs_c += ../ttptek/tttek.c
+srcs_c += WSAAsyncGetAddrInfo.c
+srcs_c += buffer.c
+srcs_c += clipboar.c
+srcs_c += commlib.c
+srcs_c += keyboard.c
+srcs_c += keyboard_pp.c
+srcs_c += sizetip.c
+srcs_c += telnet.c
+srcs_c += ttdde.c
+srcs_c += ttdialog.c
+srcs_c += ttfileio.c
+srcs_c += ttime.c
+srcs_c += ttsetup.c
+srcs_c += ttwinman.c
+srcs_c += ttwsk.c
+srcs_c += vtdisp.c
+srcs_c += vtterm.c
+srcs_c += winjump.c
+
+srcs_rc += ../../teraterm/common/edithistory.rc
+srcs_rc += ../ttpdlg/ttpdlg.rc
+srcs_rc += coding_pp.rc
+srcs_rc += debug_pp.rc
+srcs_rc += filesys_log.rc
+srcs_rc += font_pp.rc
+srcs_rc += mouse_pp.rc
+srcs_rc += plugin_pp.rc
+srcs_rc += tekfont_pp.rc
+srcs_rc += teraterm_manifest.rc
+srcs_rc += themedlg.rc
+srcs_rc += tt-version.rc
+srcs_rc += ttermpro.rc
+srcs_rc += ui_pp.rc
+
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: foreach $(srcs_c) | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc |> {res}
+
+LDFLAGS += /SUBSYSTEM:WINDOWS
+LDFLAGS += advapi32.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+: {objs} {res} ../common/common_static.lib ../ttpcmn/ttpcmn.lib ../../cygwin/cyglib/cyglib.lib ../../libs/oniguruma/onig.lib ../../libs/SFMT/sfmt.lib |> !link |> ttermpro.exe

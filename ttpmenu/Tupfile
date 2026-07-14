@@ -1,0 +1,33 @@
+include_rules
+
+# ttpmenu.exe - the Tera Term launcher menu (GUI, ANSI build; CMake leaves UNICODE
+# off). Links common_static plus LibreSSL libcrypto for stored-profile encryption
+# (PBKDF2/EVP/SHA512 in winmisc.cpp).
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../teraterm/common
+
+# LibreSSL is a prebuilt external dependency (not part of the Phase-0 set). Point
+# at its extracted include/lib; adjust the root if putup stages it elsewhere.
+LIBRESSL_ROOT = $(S)/libs/libressl
+
+CXXFLAGS += -I$(S)/ttpmenu -I$(S)/teraterm/common -I$(COMMON_GENDIR) -I$(LIBRESSL_ROOT)/include
+RCFLAGS  += /I $(S)/ttpmenu /I $(S)/teraterm/common /I $(COMMON_GENDIR)
+
+srcs_cpp += registry.cpp
+srcs_cpp += ttpmenu.cpp
+srcs_cpp += winmisc.cpp
+
+srcs_rc += ttpmenu-version.rc
+srcs_rc += ttpmenu.rc
+
+# svnversion.h (via tt-version.h in ttpmenu-version.h/.rc) is generated in common.
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: foreach $(srcs_rc)  | $(S)/teraterm/common/<gen> |> !rc  |> {res}
+
+# GUI subsystem; clang-cl/lld-link do not auto-link Win32 libs, and common_static
+# pulls the full transitive syslib set. bcrypt/crypt32/wtsapi32 per the CMake.
+LDFLAGS += /SUBSYSTEM:WINDOWS
+LDFLAGS += advapi32.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+LDFLAGS += bcrypt.lib crypt32.lib wtsapi32.lib
+
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/libs/libressl/crypto.lib |> !link |> ttpmenu$(_exe)

@@ -1,0 +1,48 @@
+# Tuprules.tup - shared build rules for Tera Term under putup.
+#
+# Windows target: clang-cl + lld-link against an xwin-splatted MSVC SDK/CRT,
+# cross-compiled from Linux. Toolchain and flags come from the active tup.config
+# (see configs/xwin.config). The host-specific xwin splat location is injected
+# from the XWIN_SPLAT environment variable so it is not baked into committed
+# config:
+#   XWIN_SPLAT=~/.xwin/splat putup configure --config configs/xwin.config -B build-win
+#   XWIN_SPLAT=~/.xwin/splat putup -B build-win
+
+S = $(TUP_CWD)
+B = $(TUP_VARIANT_OUTPUTDIR)
+
+_obj = @(OBJ_EXT)
+_lib = @(LIB_EXT)
+_exe = @(EXE_EXT)
+
+CC = @(CC)
+CXX = @(CXX)
+AR = @(AR)
+RC = @(RC)
+LINKER = @(LINKER)
+
+CFLAGS = @(CFLAGS)
+CXXFLAGS = @(CXXFLAGS)
+LDFLAGS = @(LDFLAGS)
+RCFLAGS = @(RCFLAGS)
+
+# clang-cl + xwin: inject the xwin-splatted MSVC CRT + Windows SDK include/lib
+# paths. XWIN_SPLAT comes from the environment (host-specific, not committed).
+ifeq (@(XWIN),y)
+import XWIN_SPLAT
+XWIN_INC = /imsvc $(XWIN_SPLAT)/crt/include /imsvc $(XWIN_SPLAT)/sdk/include/ucrt /imsvc $(XWIN_SPLAT)/sdk/include/um /imsvc $(XWIN_SPLAT)/sdk/include/shared
+CFLAGS += $(XWIN_INC)
+CXXFLAGS += $(XWIN_INC)
+LDFLAGS += /libpath:$(XWIN_SPLAT)/crt/lib/x86_64 /libpath:$(XWIN_SPLAT)/sdk/lib/ucrt/x86_64 /libpath:$(XWIN_SPLAT)/sdk/lib/um/x86_64
+RCFLAGS += /I $(XWIN_SPLAT)/sdk/include/um /I $(XWIN_SPLAT)/sdk/include/shared /I $(XWIN_SPLAT)/sdk/include/ucrt
+endif
+
+# Compile / archive / resource-compile / link. Display text stays on the |> line.
+# The _thirdparty variants drop /WX (vendored code we do not warning-gate).
+!cc = |> ^ CC %f^ $(CC) $(CFLAGS) /c %f /Fo%o |> %B.$(_obj)
+!cxx = |> ^ CXX %f^ $(CXX) $(CXXFLAGS) /c %f /Fo%o |> %B.$(_obj)
+!cc_thirdparty = |> ^ CC %f^ $(CC) $(CFLAGS) /WX- /c %f /Fo%o |> %B.$(_obj)
+!cxx_thirdparty = |> ^ CXX %f^ $(CXX) $(CXXFLAGS) /WX- /c %f /Fo%o |> %B.$(_obj)
+!rc = |> ^ RC %f^ $(RC) /C 65001 $(RCFLAGS) /FO %o %f |> %B.res
+!ar = |> ^ AR %o^ $(AR) /nologo /OUT:%o %f |>
+!link = |> ^ LINK %o^ $(LINKER) /nologo %f /OUT:%o $(LDFLAGS) |>

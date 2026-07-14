@@ -1,0 +1,12 @@
+include_rules
+
+# TTXCallSysMenu.dll — standalone sample TTX plugin (no common_static/ttpcmn).
+CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm
+
+srcs_c += TTXCallSysMenu.c
+
+: foreach $(srcs_c) |> !cc |> {objs}
+
+LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXCallSysMenu.lib
+LDFLAGS += user32.lib gdi32.lib advapi32.lib shell32.lib comdlg32.lib
+: {objs} |> !link |> TTXCallSysMenu.dll | TTXCallSysMenu.lib <implib>

@@ -1,0 +1,38 @@
+include_rules
+
+# ttpcmn.dll: the common runtime DLL (holds the agent receive tap in ttcmn.c).
+# Recompiles a few common .c sources directly (per the CMake target) and links
+# common_static for the rest; exports are controlled by ttpcmn.def.
+
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../common
+
+CFLAGS += -DTTPCMN_DLL
+CXXFLAGS += -DTTPCMN_DLL
+CFLAGS += -I$(S)/teraterm/ttpcmn -I$(S)/teraterm/ttpfile -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/teraterm/susie_plugin -I$(COMMON_GENDIR)
+CXXFLAGS += -I$(S)/teraterm/ttpcmn -I$(S)/teraterm/ttpfile -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/teraterm/susie_plugin -I$(COMMON_GENDIR)
+RCFLAGS += /I $(S)/teraterm/common /I $(S)/teraterm/ttpcmn /I $(COMMON_GENDIR)
+
+srcs_c += language.c
+srcs_c += ttcmn.c
+srcs_c += ttcmn_cominfo.c
+srcs_c += ../common/i18n.c
+srcs_c += ../common/ttlib.c
+srcs_c += ../common/servicenames.c
+
+srcs_cpp += ttcmn_lib.cpp
+srcs_cpp += ttcmn_notify.cpp
+
+# svnversion.h is generated in common's build dir; order-depend on it.
+: foreach $(srcs_c) | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_cpp) | $(S)/teraterm/common/<gen> |> !cxx |> {objs}
+: ttpcmn-version.rc | $(S)/teraterm/common/<gen> |> !rc |> {res}
+
+# DLL link: exports via ttpcmn.def, import lib ttpcmn.lib, common_static + syslibs.
+# clang-cl/lld-link (unlike MSVC) do not auto-link the standard Win32 libs.
+LDFLAGS += /DLL /DEF:$(S)/teraterm/ttpcmn/ttpcmn.def
+LDFLAGS += user32.lib gdi32.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib
+LDFLAGS += shlwapi.lib comctl32.lib winspool.lib winmm.lib imm32.lib version.lib setupapi.lib imagehlp.lib gdiplus.lib
+# ttpcmn.lib (the import lib) is a PRIMARY output (%2o), not a secondary (| ...):
+# putup 0.1.0 does not resolve cross-dir references to secondary outputs, so on a
+# cold build the consumers that link ttpcmn.lib would fail with an unresolved ghost.
+: {objs} {res} $(S)/teraterm/common/common_static.lib |> ^ LINK %1o^ $(LINKER) /nologo %f /OUT:%1o /IMPLIB:%2o $(LDFLAGS) |> ttpcmn.dll ttpcmn.lib

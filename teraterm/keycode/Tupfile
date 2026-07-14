@@ -1,0 +1,28 @@
+include_rules
+
+# keycode.exe + keycodeW.exe from one source set: the W build adds UNICODE/_UNICODE.
+# keycode.c is compiled once per variant into distinct objects; the two .rc files
+# are define-independent (icon + version string) so they are compiled once and
+# linked into both exes.
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../common
+CFLAGS  += -I$(S)/teraterm/keycode -I$(S)/teraterm/common -I$(COMMON_GENDIR)
+RCFLAGS += /I $(S)/teraterm/keycode /I $(S)/teraterm/common /I $(COMMON_GENDIR)
+
+srcs_rc += keycode-version.rc
+srcs_rc += keycode.rc
+
+# svnversion.h (via tt-version.h in keycode-version.rc) is generated in common.
+: foreach $(srcs_rc) | $(S)/teraterm/common/<gen> |> !rc |> {res}
+
+: keycode.c | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: keycode.c | $(S)/teraterm/common/<gen> |> ^ CC keycode.c (unicode)^ $(CC) $(CFLAGS) -DUNICODE -D_UNICODE /c %f /Fo%o |> keycodeW.$(_obj) {objs_w}
+
+# GUI subsystem; clang-cl/lld-link do not auto-link Win32 libs, and common_static
+# pulls the full transitive syslib set.
+LDFLAGS += /SUBSYSTEM:WINDOWS
+LDFLAGS += advapi32.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib gdiplus.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+
+LIBS = $(S)/teraterm/common/common_static.lib $(S)/teraterm/ttpcmn/ttpcmn.lib
+: {objs}   {res} $(LIBS) |> !link |> keycode$(_exe)
+: {objs_w} {res} $(LIBS) |> !link |> keycodeW$(_exe)

@@ -1,0 +1,10 @@
+include_rules
+
+# libsshagentc: SSH-agent client (uses Windows BCrypt for sha256). Static lib.
+CXXFLAGS += -I$(S)/ttssh2/libsshagentc -I$(S)/teraterm/common -I$(S)/teraterm/teraterm
+
+srcs_cpp += agentc.cpp
+srcs_cpp += sha256_bcrypt.cpp
+
+: foreach $(srcs_cpp) |> !cxx |> {objs}
+: {objs} |> !ar |> libsshagentc.$(_lib)
