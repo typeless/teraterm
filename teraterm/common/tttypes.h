@@ -875,6 +875,10 @@ typedef struct {
 	void (*Log1Bin)(BYTE b);
 	void (*LogBinSkip)(int add);
 
+	/* Agent control: tap every received (post telnet-IAC) byte. Set by the
+	 * agent server when enabled, independent of logging; NULL otherwise. */
+	void (*AgentRecv1)(BYTE b);
+
 	TTTSet *ts;
 
 	wchar_t *TitleRemoteW;

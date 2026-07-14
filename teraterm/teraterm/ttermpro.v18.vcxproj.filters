@@ -150,6 +150,21 @@
     <ClCompile Include="font_pp.cpp">
       <Filter>dialog</Filter>
     </ClCompile>
+    <ClCompile Include="agent_jsonrpc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="agent_mcp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="agent_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="agent_shmem.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\libs\cJSON\cJSON.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="broadcast.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -551,6 +566,21 @@
     </ClInclude>
     <ClInclude Include="font_pp_res.h">
       <Filter>dialog</Filter>
+    </ClInclude>
+    <ClInclude Include="agent_jsonrpc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="agent_mcp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="agent_server.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="agent_shmem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\libs\cJSON\cJSON.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="broadcast.h">
       <Filter>Header Files</Filter>

@@ -13,7 +13,7 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// âpåÍ (ïƒçë) resources
+// ÔøΩpÔøΩÔøΩ (ÔøΩƒçÔøΩ) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
@@ -717,6 +717,8 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Macro",                      ID_CONTROL_MACRO
         MENUITEM "Show Macro &Window",          ID_CONTROL_SHOW_MACRO
+        MENUITEM SEPARATOR
+        MENUITEM "&Agent send",                 ID_CONTROL_AGENTSEND
     END
     POPUP "&Help"
     BEGIN
@@ -784,7 +786,7 @@ BEGIN
     "I",            ID_ACC_DISCONNECT,      VIRTKEY, ALT, NOINVERT
 END
 
-#endif    // âpåÍ (ïƒçë) resources
+#endif    // ÔøΩpÔøΩÔøΩ (ÔøΩƒçÔøΩ) resources
 /////////////////////////////////////////////////////////////////////////////
 
 
