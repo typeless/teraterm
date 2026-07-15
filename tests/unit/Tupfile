@@ -17,6 +17,8 @@ srcs_cpp += test_telnet_neg.cpp
 srcs_c += $(S)/teraterm/teraterm/telnet_neg.c
 srcs_cpp += test_buffcell.cpp
 srcs_c += $(S)/teraterm/teraterm/buffcell.c
+srcs_cpp += test_vtparams.cpp
+srcs_c += $(S)/teraterm/teraterm/vtparams.c
 
 : foreach $(srcs_cpp) |> !cxx |> {objs}
 : foreach $(srcs_c) |> !cc |> {objs}
