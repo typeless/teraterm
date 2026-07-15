@@ -53,6 +53,9 @@ add_executable(
   tekwin.h
   telnet.c
   telnet.h
+  telnet_defs.h
+  telnet_neg.c
+  telnet_neg.h
   teraprn.cpp
   teraprn.h
   teraterm.cpp
