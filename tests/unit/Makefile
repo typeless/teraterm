@@ -91,9 +91,9 @@ $(B)/telnet_neg_impl.o: $(TT)/telnet_neg.c $(TT)/telnet_neg.h $(TT)/telnet_defs.
 $(B)/telnet_neg: test_telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h $(B)/telnet_neg_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
-# vtparams is pure C (no shim); compile it as C, link with the C++ test.
-$(B)/vtparams_impl.o: $(TT)/vtparams.c $(TT)/vtparams.h | $(B)
-	$(CC) $(CFLAGS) -I$(TT) -c $< -o $@
+# vtparams is C++ (modern conventions) behind a C-compatible header.
+$(B)/vtparams_impl.o: $(TT)/vtparams.cpp $(TT)/vtparams.h | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -c $< -o $@
 
 $(B)/vtparams: test_vtparams.cpp $(TT)/vtparams.h $(B)/vtparams_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@

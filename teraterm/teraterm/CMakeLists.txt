@@ -92,7 +92,7 @@ add_executable(
   vtdraw.h
   vtterm.c
   vtterm.h
-  vtparams.c
+  vtparams.cpp
   vtparams.h
   vtwin.cpp
   vtwin.h
