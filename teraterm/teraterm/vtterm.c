@@ -1221,11 +1221,23 @@ static void csParseControl(BYTE b, void *client_data)
 	ParseControl(b);
 }
 
+static void csGetConfig(CharSetConfig *out, void *client_data)
+{
+	(void)client_data;
+	out->KanjiCode = ts.KanjiCode;
+	out->JIS7Katakana = ts.JIS7Katakana;
+	out->TermFlag = ts.TermFlag;
+	out->FallbackToCP932 = ts.FallbackToCP932;
+	out->ISO2022Flag = ts.ISO2022Flag;
+	out->DebugModes = ts.DebugModes;
+}
+
 static CharSetData *CharSetInitTerm(void)
 {
 	CharSetOp op;
 	op.PutU32 = csPutU32;
 	op.ParseControl = csParseControl;
+	op.GetConfig = csGetConfig;
 	return CharSetInit(&op, NULL);
 }
 
@@ -4965,6 +4977,7 @@ static wchar_t *ConvertUTF16(const BYTE *ptr, size_t len)
 	size_t i;
 	op.PutU32 = PutU32Buf;
 	op.ParseControl = ParseControlBuf;
+	op.GetConfig = csGetConfig;
 	b.size = 32;
 	b.ptr = (wchar_t *)malloc(sizeof(wchar_t) * b.size);
 	b.index = 0;

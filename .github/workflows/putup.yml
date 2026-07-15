@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check sealed core TUs stay decoupled from ts/cv
+        run: sh ci_scripts/check_sealed_tus.sh
       - name: Run host unit tests (ASan/UBSan)
         run: make -C tests/unit check
 

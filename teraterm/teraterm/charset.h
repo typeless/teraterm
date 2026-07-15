@@ -38,12 +38,26 @@ typedef struct {
 	int infos[6];
 } CharSetState;
 
+// The subset of the terminal settings the charset decoder reads. The owner
+// supplies these through CharSetOp::GetConfig instead of the decoder reaching
+// into the global settings, so the decoder has no dependency on ttwinman/ts.
+typedef struct {
+	WORD KanjiCode;
+	WORD JIS7Katakana;
+	WORD TermFlag;
+	WORD FallbackToCP932;
+	WORD ISO2022Flag;
+	WORD DebugModes;
+} CharSetConfig;
+
 // 文字の出力
 typedef struct CharSetOpTag {
 	// 出力される Unicode 文字
 	void (*PutU32)(char32_t code, void *client_data);
 	// 出力される Control 文字
 	void (*ParseControl)(BYTE b, void *client_data);
+	// 現在の端末設定を取得する (呼び出しごとに最新値を返すこと)
+	void (*GetConfig)(CharSetConfig *out, void *client_data);
 } CharSetOp;
 
 /* Character sets */

@@ -36,13 +36,14 @@
 #include <assert.h>
 #include <windows.h>
 
-#include "ttwinman.h"	// for ts
 #include "codeconv.h"
 #include "codeconv_mb.h"
 #include "unicode.h"
 #include "ttcstd.h"
 #include "vtterm.h"
+#include "tttypes.h"	// config constants (TF_*, ISO2022_*, US, DEL) — not the ts global
 #include "tttypes_charset.h"
+#include "ttlib.h"	// __ismbblead
 #include "ttlib_charset.h"
 
 #include "charset.h"
@@ -83,7 +84,19 @@ typedef struct CharSetDataTag {
 	// Operations
 	CharSetOp Op;
 	void *ClientData;
+	// Terminal settings snapshot, refreshed from the owner at each entry point.
+	CharSetConfig cfg;
 } CharSetData;
+
+// Pull the current terminal settings from the owner into the snapshot. Called at
+// each public entry that reads config; within one call the values are constant
+// (single-threaded), so this reproduces the old live reads of the global ts.
+static void CharSetRefreshConfig(CharSetData *w)
+{
+	if (w->Op.GetConfig != NULL) {
+		w->Op.GetConfig(&w->cfg, w->ClientData);
+	}
+}
 
 static BOOL IsC0(char32_t b)
 {
@@ -100,13 +113,13 @@ static BOOL IsC1(char32_t b)
  */
 static void CharSetInit2(CharSetData *w)
 {
-	if (LangIsJapanese(ts.KanjiCode)) {
+	if (LangIsJapanese(w->cfg.KanjiCode)) {
 		w->Gn[0] = IdASCII;
 		w->Gn[1] = IdKatakana;
 		w->Gn[2] = IdKatakana;
 		w->Gn[3] = IdKanji;
 		w->Glr[0] = 0;
-		if ((ts.KanjiCode==IdJIS) && (ts.JIS7Katakana==0))
+		if ((w->cfg.KanjiCode==IdJIS) && (w->cfg.JIS7Katakana==0))
 			w->Glr[1] = 2;	// 8-bit katakana
 		else
 			w->Glr[1] = 3;
@@ -134,6 +147,7 @@ CharSetData *CharSetInit(const CharSetOp *op, void *client_data)
 	w->Op = *op;
 	w->ClientData = client_data;
 
+	CharSetRefreshConfig(w);
 	CharSetInit2(w);
 	w->GLtmp = 0;
 	w->SSflag = FALSE;
@@ -199,14 +213,14 @@ static BOOL CheckKanji(CharSetData *w, BYTE b)
 {
 	BOOL Check;
 
-	if (!LangIsJapanese(ts.KanjiCode) && ts.KanjiCode != IdUTF8) {
+	if (!LangIsJapanese(w->cfg.KanjiCode) && w->cfg.KanjiCode != IdUTF8) {
 		return FALSE;
 	}
 
 	w->ConvJIS = FALSE;
 
-	if (ts.KanjiCode==IdSJIS ||
-	   (ts.FallbackToCP932 && ts.KanjiCode==IdUTF8)) {
+	if (w->cfg.KanjiCode==IdSJIS ||
+	   (w->cfg.FallbackToCP932 && w->cfg.KanjiCode==IdUTF8)) {
 		if (((0x80<b) && (b<0xa0)) || ((0xdf<b) && (b<0xfd))) {
 			w->Fallbacked = TRUE;
 			return TRUE; // SJIS kanji
@@ -222,10 +236,10 @@ static BOOL CheckKanji(CharSetData *w, BYTE b)
 	}
 	else if ((b>=0xA1) && (b<=0xFE)) {
 		Check = (w->Gn[w->Glr[1]] == IdKanji);
-		if (ts.KanjiCode==IdEUC) {
+		if (w->cfg.KanjiCode==IdEUC) {
 			Check = TRUE;
 		}
-		else if (ts.KanjiCode==IdJIS && ((ts.TermFlag & TF_FIXEDJIS)!=0) && (ts.JIS7Katakana==0)) {
+		else if (w->cfg.KanjiCode==IdJIS && ((w->cfg.TermFlag & TF_FIXEDJIS)!=0) && (w->cfg.JIS7Katakana==0)) {
 			Check = FALSE; // 8-bit katakana
 		}
 		w->ConvJIS = Check;
@@ -257,7 +271,7 @@ static BOOL ParseFirstJP(CharSetData *w, BYTE b)
 			w->KanjiIn = FALSE;
 			return TRUE;
 		}
-		else if ((ts.TermFlag & TF_CTRLINKANJI)==0) {
+		else if ((w->cfg.TermFlag & TF_CTRLINKANJI)==0) {
 			w->KanjiIn = FALSE;
 		}
 	}
@@ -316,9 +330,9 @@ static BOOL ParseFirstJP(CharSetData *w, BYTE b)
 		w->Op.ParseControl(b, w->ClientData);
 	}
 	else if (b==0x8E) { // SS2
-		switch (ts.KanjiCode) {
+		switch (w->cfg.KanjiCode) {
 		case IdEUC:
-			if (ts.ISO2022Flag & ISO2022_SS2) {
+			if (w->cfg.ISO2022Flag & ISO2022_SS2) {
 				w->EUCkanaIn = TRUE;
 			}
 			break;
@@ -330,9 +344,9 @@ static BOOL ParseFirstJP(CharSetData *w, BYTE b)
 		}
 	}
 	else if (b==0x8F) { // SS3
-		switch (ts.KanjiCode) {
+		switch (w->cfg.KanjiCode) {
 		case IdEUC:
-			if (ts.ISO2022Flag & ISO2022_SS3) {
+			if (w->cfg.ISO2022Flag & ISO2022_SS3) {
 				w->EUCcount = 2;
 				w->EUCsupIn = TRUE;
 			}
@@ -358,11 +372,11 @@ static BOOL ParseFirstJP(CharSetData *w, BYTE b)
 		}
 
 		if ((w->Gn[w->Glr[1]] != IdASCII) ||
-		    ((ts.KanjiCode==IdEUC) && w->EUCkanaIn) ||
-		    (ts.KanjiCode==IdSJIS) ||
-		    ((ts.KanjiCode==IdJIS) &&
-			 (ts.JIS7Katakana==0) &&
-			 ((ts.TermFlag & TF_FIXEDJIS)!=0))) {
+		    ((w->cfg.KanjiCode==IdEUC) && w->EUCkanaIn) ||
+		    (w->cfg.KanjiCode==IdSJIS) ||
+		    ((w->cfg.KanjiCode==IdJIS) &&
+			 (w->cfg.JIS7Katakana==0) &&
+			 ((w->cfg.TermFlag & TF_FIXEDJIS)!=0))) {
 			// bはsjisの半角カタカナ
 			unsigned long u32 = CP932ToUTF32(b);
 			w->Op.PutU32(u32, w->ClientData);
@@ -391,7 +405,7 @@ static BOOL ParseFirstKR(CharSetData *w, BYTE b)
 			((0x81<=b) && (b<=0xFE)))
 		{
 			unsigned long u32 = 0;
-			if (ts.KanjiCode == IdKoreanCP949) {
+			if (w->cfg.KanjiCode == IdKoreanCP949) {
 				// CP949
 				w->Kanji = w->Kanji + b;
 				u32 = MBCP_UTF32(w->Kanji, 949);
@@ -403,12 +417,12 @@ static BOOL ParseFirstKR(CharSetData *w, BYTE b)
 			w->KanjiIn = FALSE;
 			return TRUE;
 		}
-		else if ((ts.TermFlag & TF_CTRLINKANJI)==0) {
+		else if ((w->cfg.TermFlag & TF_CTRLINKANJI)==0) {
 			w->KanjiIn = FALSE;
 		}
 	}
 
-	if ((!w->KanjiIn) && CheckFirstByte(b, ts.KanjiCode)) {
+	if ((!w->KanjiIn) && CheckFirstByte(b, w->cfg.KanjiCode)) {
 		w->Kanji = b << 8;
 		w->KanjiIn = TRUE;
 		return TRUE;
@@ -459,11 +473,11 @@ static BOOL ParseFirstCn(CharSetData *w, BYTE b)
 		{
 			unsigned long u32 = 0;
 			w->Kanji = w->Kanji + b;
-			if (ts.KanjiCode == IdCnGB2312) {
+			if (w->cfg.KanjiCode == IdCnGB2312) {
 				// CP936 GB2312
 				u32 = MBCP_UTF32(w->Kanji, 936);
 			}
-			else if (ts.KanjiCode == IdCnBig5) {
+			else if (w->cfg.KanjiCode == IdCnBig5) {
 				// CP950 Big5
 				u32 = MBCP_UTF32(w->Kanji, 950);
 			}
@@ -474,12 +488,12 @@ static BOOL ParseFirstCn(CharSetData *w, BYTE b)
 			w->KanjiIn = FALSE;
 			return TRUE;
 		}
-		else if ((ts.TermFlag & TF_CTRLINKANJI)==0) {
+		else if ((w->cfg.TermFlag & TF_CTRLINKANJI)==0) {
 			w->KanjiIn = FALSE;
 		}
 	}
 
-	if ((!w->KanjiIn) && CheckFirstByte(b, ts.KanjiCode)) {
+	if ((!w->KanjiIn) && CheckFirstByte(b, w->cfg.KanjiCode)) {
 		w->Kanji = b << 8;
 		w->KanjiIn = TRUE;
 		return TRUE;
@@ -633,9 +647,9 @@ recheck:
 
 		// 0x80 - 0xc1, 0xf5 - 0xff
 		// UTF-8で1byteに出現しないコードのとき
-		if (ts.FallbackToCP932) {
+		if (w->cfg.FallbackToCP932) {
 			// fallbackする場合
-			if (LangIsJapanese(ts.KanjiCode) && ismbbleadSJIS(b)) {
+			if (LangIsJapanese(w->cfg.KanjiCode) && ismbbleadSJIS(b)) {
 				// 日本語の場合 && Shift_JIS 1byte目
 				// Shift_JIS に fallback
 				w->Fallbacked = TRUE;
@@ -654,7 +668,7 @@ recheck:
 	// 2byte以降正常?
 	if((b & 0xc0) != 0x80) {	// == (b <= 0x7f || 0xc0 <= b)
 		// 不正な文字, (上位2bitが 0b10xx_xxxx ではない)
-		PutReplacementChr(w, w->buf, w->count, ts.FallbackToCP932);
+		PutReplacementChr(w, w->buf, w->count, w->cfg.FallbackToCP932);
 		w->count = 0;
 		goto recheck;
 	}
@@ -687,7 +701,7 @@ recheck:
 			if ((w->buf[0] == 0xe0 && (w->buf[1] < 0xa0 || 0xbf < w->buf[1])) ||
 				(w->buf[0] == 0xed && (                 0x9f < w->buf[1]))) {
 				// 不正な UTF-8
-				PutReplacementChr(w, w->buf, 2, ts.FallbackToCP932);
+				PutReplacementChr(w, w->buf, 2, w->cfg.FallbackToCP932);
 				w->count = 0;
 				goto recheck;
 			}
@@ -708,7 +722,7 @@ recheck:
 	if ((w->buf[0] == 0xf0 && (w->buf[1] < 0x90 || 0xbf < w->buf[1])) ||
 		(w->buf[0] == 0xf4 && (w->buf[1] < 0x80 || 0x8f < w->buf[1]))) {
 		// 不正な UTF-8
-		PutReplacementChr(w, w->buf, 3, ts.FallbackToCP932);
+		PutReplacementChr(w, w->buf, 3, w->cfg.FallbackToCP932);
 		w->count = 0;
 		goto recheck;
 	}
@@ -725,7 +739,7 @@ recheck:
 static BOOL ParseEnglish(CharSetData *w, BYTE b)
 {
 	unsigned short u16 = 0;
-	int r = UnicodeFromISO8859((IdKanjiCode)ts.KanjiCode, b, &u16);
+	int r = UnicodeFromISO8859((IdKanjiCode)w->cfg.KanjiCode, b, &u16);
 	if (r == 0) {
 		return FALSE;
 	}
@@ -810,7 +824,8 @@ static void PutDebugChar(CharSetData *w, BYTE b)
 
 void ParseFirst(CharSetData *w, BYTE b)
 {
-	IdKanjiCode kanji_code = (IdKanjiCode)ts.KanjiCode;
+	CharSetRefreshConfig(w);
+	IdKanjiCode kanji_code = (IdKanjiCode)w->cfg.KanjiCode;
 	if (w->DebugFlag != DEBUG_FLAG_NONE) {
 		kanji_code = IdDebug;
 	}
@@ -1065,10 +1080,11 @@ void CharSetFallbackFinish(CharSetData *w)
  */
 void CharSetSetNextDebugMode(CharSetData *w)
 {
-	// ts.DebugModes には tttypes.h の DBGF_* が OR で入ってる
+	CharSetRefreshConfig(w);
+	// w->cfg.DebugModes には tttypes.h の DBGF_* が OR で入ってる
 	do {
 		w->DebugFlag = (w->DebugFlag + 1) % DEBUG_FLAG_MAXD;
-	} while (w->DebugFlag != DEBUG_FLAG_NONE && !((ts.DebugModes >> (w->DebugFlag - 1)) & 1));
+	} while (w->DebugFlag != DEBUG_FLAG_NONE && !((w->cfg.DebugModes >> (w->DebugFlag - 1)) & 1));
 }
 
 BYTE CharSetGetDebugMode(CharSetData *w)
