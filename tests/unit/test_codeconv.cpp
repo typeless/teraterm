@@ -181,6 +181,32 @@ TEST_CASE("CP932ToUTF32 maps Shift_JIS through the platform codepage",
 	REQUIRE(CP932ToUTF32(0x8140) == 0x3000); // SJIS lead 0x8140 -> ideographic space
 }
 
+TEST_CASE("UTF-32 -> CP932 -> UTF-32 round-trips convertible characters",
+		  "[codeconv][cp932][win]")
+{
+	// Characters that exist in CP932; the exact SJIS bytes are the platform's to
+	// choose, so assert the round-trip rather than hardcoded encodings.
+	const uint32_t cps[] = {
+		0x41,     // 'A'
+		0x3042,   // HIRAGANA A
+		0x30A2,   // KATAKANA A
+		0x4E9C,   // CJK 亜
+		0xFF21,   // FULLWIDTH A
+		0x3000,   // IDEOGRAPHIC SPACE
+	};
+	for (uint32_t cp : cps) {
+		char mb[2];
+		const size_t n = UTF32ToCP932(cp, mb, sizeof(mb));
+		INFO("codepoint U+" << std::hex << cp);
+		REQUIRE(n >= 1);
+		REQUIRE(n <= 2);
+		const unsigned short sjis =
+			(n == 1) ? (unsigned short)(unsigned char)mb[0]
+					 : (unsigned short)(((unsigned char)mb[0] << 8) | (unsigned char)mb[1]);
+		REQUIRE(CP932ToUTF32(sjis) == cp);
+	}
+}
+
 TEST_CASE("surrogate predicates classify the UTF-16 code-unit ranges", "[codeconv][utf16]")
 {
 	REQUIRE(IsHighSurrogate(0xD800));
