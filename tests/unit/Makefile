@@ -49,6 +49,12 @@ run-%: $(B)/%
 	@echo "== $* =="
 	@$<
 
+# codeconv includes [win]-tagged cases whose codepage calls are winhost stubs on
+# the host; exclude them here (they run for real on the native ttunittest.exe).
+run-codeconv: $(B)/codeconv
+	@echo "== codeconv (host: excluding [win]) =="
+	@$< "~[win]"
+
 $(B):
 	@mkdir -p $(B)
 

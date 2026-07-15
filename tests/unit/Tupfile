@@ -1,0 +1,22 @@
+include_rules
+
+# ttunittest.exe — the Catch2 unit tests built for native Windows (Lane B).
+#
+# On Windows the code under test compiles against the real <windows.h>, so the
+# host winhost/ shim is NOT used here and [win]-tagged tests that exercise the
+# genuine codepage conversions run for real. The .cpp files under test are
+# compiled straight in (rather than linked from common_static) to keep this a
+# small, self-contained test binary. Runs on the windows-latest CI lane, and
+# locally under Wine.
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/libs/catch2
+
+srcs_cpp += test_codeconv.cpp
+srcs_cpp += $(S)/teraterm/common/codeconv.cpp
+
+: foreach $(srcs_cpp) |> !cxx |> {objs}
+: $(S)/libs/catch2/catch_amalgamated.cpp |> !cxx_thirdparty |> {objs}
+
+LDFLAGS += /SUBSYSTEM:CONSOLE
+LDFLAGS += kernel32.lib user32.lib
+
+: {objs} |> !link |> ttunittest$(_exe)

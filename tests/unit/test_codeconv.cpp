@@ -171,6 +171,16 @@ TEST_CASE("scalar encoders report the required length for a NULL buffer",
 	REQUIRE(UTF32ToUTF16(0x41, nullptr, 0) == 1);
 }
 
+// [win]: exercises the real Win32 codepage conversion, so it runs only on the
+// native-Windows lane (ttunittest.exe). On the host lane the codepage calls are
+// winhost stubs that abort, so `make check` filters these out with ~[win].
+TEST_CASE("CP932ToUTF32 maps Shift_JIS through the platform codepage",
+		  "[codeconv][cp932][win]")
+{
+	REQUIRE(CP932ToUTF32(0x41) == 0x41);     // ASCII 'A' round-trips
+	REQUIRE(CP932ToUTF32(0x8140) == 0x3000); // SJIS lead 0x8140 -> ideographic space
+}
+
 TEST_CASE("surrogate predicates classify the UTF-16 code-unit ranges", "[codeconv][utf16]")
 {
 	REQUIRE(IsHighSurrogate(0xD800));
