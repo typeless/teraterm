@@ -2,11 +2,26 @@
 
 Lets an external agent read a connection's received stream and inject data into
 the connection over a local TCP socket, using a line-delimited JSON-RPC
-protocol. Built into `ttermpro.exe`; **disabled by default**.
+protocol. Built into `ttermpro.exe`. The shipped `TERATERM.INI` enables the MCP
+listener (loopback, read-only, auth required); sending stays off until armed.
 
 ## Enabling
 
-Add an `[Agent]` section to `TERATERM.INI`:
+The `Control → Agent server` menu toggles the agent at runtime (check mark =
+running); the title bar always shows the state: ` [agent:off]` / ` [agent]` /
+` [agent:send]`. `Control → Agent send` arms/disarms injection within the
+`AllowSend` grant. Configuration lives in the `[Agent]` section of
+`TERATERM.INI`; the shipped default is:
+
+```ini
+[Agent]
+Enable=on
+McpPort=5334
+Token=
+AllowSend=off
+```
+
+All keys:
 
 ```ini
 [Agent]
@@ -14,7 +29,7 @@ Enable=on
 BindAddress=127.0.0.1
 Port=5333
 McpPort=5334
-Token=change-me-to-a-random-secret
+Token=
 AllowSend=on
 RingBytes=1048576
 ```
@@ -25,7 +40,7 @@ RingBytes=1048576
 | `BindAddress` | `127.0.0.1` | Interface to bind. Keep loopback; tunnel for remote access. |
 | `Port` | `0` | Raw line-JSON TCP port (0 = disabled). |
 | `McpPort` | `0` | Native MCP (Streamable HTTP) port for direct MCP hosts (0 = disabled). |
-| `Token` | *(empty)* | Bearer token. Required on every request (raw `hello` / MCP `Authorization`). |
+| `Token` | *(empty)* | Bearer token, required on every request (raw `hello` / MCP `Authorization`). Left blank, a random token is generated and saved here the first time the agent starts. `Token=none` disables auth explicitly (e.g. when access is tunneled through SSH and the machine is single-user) — allowed only with a loopback `BindAddress`; the agent refuses to start otherwise. |
 | `AllowSend` | `off` | Permit injecting data into the connection. Read-only if `off`. |
 | `RingBytes` | `1048576` | Scrollback capacity (min 65536). |
 
@@ -36,7 +51,13 @@ received-stream ring and send-arming.
 
 The listener binds loopback only by default. Injecting bytes into a live SSH or
 serial session is equivalent to typing at the keyboard — treat the port like a
-remote shell. Set a `Token` and never bind a public interface without one.
+remote shell. Every request carries the `Token` (auto-generated if you don't set
+one); read it out of `TERATERM.INI` to configure your client. Never bind a
+public interface. The token's job is to keep *other local users* (shared or
+Terminal Server machines) off the port — an SSH tunnel authenticates the remote
+end, but any local process can reach loopback directly. On a single-user
+machine `Token=none` is a reasonable trade; it is refused on a non-loopback
+bind.
 
 The MCP endpoint also rejects (403) any request whose `Host`/`Origin` header is
 not loopback or the configured `BindAddress`, so a malicious web page cannot

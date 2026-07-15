@@ -7,6 +7,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <sddl.h>
+#include <ntsecapi.h> /* RtlGenRandom */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -50,7 +51,7 @@ static struct {
 	char bindaddr[64];
 	int port;     /* raw line-JSON port (0 = off) */
 	int mcp_port; /* native MCP (HTTP) port (0 = off) */
-	char token[128];
+	char token[768]; /* fits any 255-wchar ini value as UTF-8 */
 	int require_token;
 	int allow_send; /* ini */
 	int send_armed; /* runtime */
@@ -578,6 +579,62 @@ static void read_config(void)
 	A.allow_send = (_wcsicmp(wbuf, L"on") == 0);
 }
 
+static int bind_is_loopback(void)
+{
+	return strncmp(A.bindaddr, "127.", 4) == 0 || strcmp(A.bindaddr, "::1") == 0;
+}
+
+/* Blank Token when the agent starts => generate one and persist it to the ini,
+ * so the shipped default config gets real auth with zero typing. Token=none
+ * opts out of auth explicitly (e.g. security delegated to an SSH tunnel), but
+ * only on a loopback bind -- an open port with no auth is refused outright.
+ * The named mutex serializes generate-if-blank across windows; without it two
+ * first-launch windows could persist different tokens and the broker would
+ * keep authenticating against one the ini no longer holds. */
+static int ensure_token(void)
+{
+	if (_stricmp(A.token, "none") == 0) {
+		if (!bind_is_loopback()) {
+			return -1;
+		}
+		A.token[0] = 0;
+		A.require_token = 0;
+		return 0;
+	}
+	if (A.token[0] != 0) {
+		return 0;
+	}
+
+	HANDLE mtx = CreateMutexW(NULL, FALSE, L"TeraTermAgentTokenV1");
+	if (mtx != NULL) {
+		WaitForSingleObject(mtx, 5000);
+	}
+	wchar_t wbuf[256];
+	GetPrivateProfileStringW(L"Agent", L"Token", L"", wbuf, _countof(wbuf), ts.SetupFNameW);
+	if (wbuf[0] == 0) {
+		unsigned char rnd[16];
+		if (RtlGenRandom(rnd, sizeof(rnd))) {
+			static const wchar_t hexdig[] = L"0123456789abcdef";
+			wchar_t tok[2 * sizeof(rnd) + 1];
+			for (size_t i = 0; i < sizeof(rnd); i++) {
+				tok[i * 2] = hexdig[rnd[i] >> 4];
+				tok[i * 2 + 1] = hexdig[rnd[i] & 0xf];
+			}
+			tok[2 * sizeof(rnd)] = 0;
+			if (WritePrivateProfileStringW(L"Agent", L"Token", tok, ts.SetupFNameW)) {
+				wcscpy_s(wbuf, _countof(wbuf), tok);
+			}
+		}
+	}
+	if (mtx != NULL) {
+		ReleaseMutex(mtx);
+		CloseHandle(mtx);
+	}
+	WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, A.token, sizeof(A.token), NULL, NULL);
+	A.require_token = (A.token[0] != 0);
+	return A.require_token ? 0 : -1;
+}
+
 /* ---- shared segment + roster ---- */
 
 /* Build an owner-only security descriptor for the shared segment. NOTE: this
@@ -715,6 +772,19 @@ static SOCKET start_listener(int port)
 	return s;
 }
 
+static int other_session_exists(void)
+{
+	if (A.shm == NULL) {
+		return 0;
+	}
+	for (int i = 0; i < AGENT_MAX_SESSIONS; i++) {
+		if (i != A.slot && A.shm->sessions[i].in_use) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /* Try to grab the well-known port(s). The single winner is the broker that
  * serves every window's session; the others just maintain their own slot. */
 static void try_become_broker(void)
@@ -744,7 +814,7 @@ static void try_become_broker(void)
 	A.listening = 1;
 }
 
-void AgentServerInit(void)
+static AgentStartResult agent_start(int force_enable)
 {
 	memset(&A, 0, sizeof(A));
 	A.listen_sock = INVALID_SOCKET;
@@ -755,8 +825,18 @@ void AgentServerInit(void)
 	}
 
 	read_config();
-	if (!A.enabled || (A.port <= 0 && A.mcp_port <= 0)) {
-		return;
+	if (force_enable) {
+		A.enabled = 1;
+	}
+	if (A.port <= 0 && A.mcp_port <= 0) {
+		A.enabled = 0;
+	}
+	if (!A.enabled) {
+		return AGENT_START_ERR_CONFIG;
+	}
+	if (ensure_token() != 0) {
+		A.enabled = 0;
+		return AGENT_START_ERR_CONFIG;
 	}
 	/* Sending is armed at startup iff the ini opted in; the menu toggle
 	 * (AgentServerArmSend) can disarm/rearm within that grant. */
@@ -764,31 +844,32 @@ void AgentServerInit(void)
 
 	WSADATA wsadata;
 	if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0) {
-		return;
+		AgentServerEnd();
+		return AGENT_START_ERR_RESOURCE;
 	}
 	A.wsa_started = 1;
 
 	if (shm_open() != 0) {
 		AgentServerEnd();
-		return;
+		return AGENT_START_ERR_RESOURCE;
 	}
 	A.slot = agent_shm_claim(A.shm, (uint32_t)GetCurrentProcessId(), self_hwnd());
 	if (A.slot < 0) {
 		AgentServerEnd(); /* too many sessions */
-		return;
+		return AGENT_START_ERR_RESOURCE;
 	}
 
 	A.resp = (char *)malloc(AGENT_RESP_MAX);
 	if (A.resp == NULL) {
 		AgentServerEnd();
-		return;
+		return AGENT_START_ERR_RESOURCE;
 	}
 
 	init_backend();
 	A.wnd = make_wnd();
 	if (A.wnd == NULL) {
 		AgentServerEnd();
-		return;
+		return AGENT_START_ERR_RESOURCE;
 	}
 
 	/* Every window taps its own received stream and publishes its status;
@@ -796,6 +877,34 @@ void AgentServerInit(void)
 	cv.AgentRecv1 = AgentServerFeed;
 	publish_status();
 	try_become_broker();
+	return AGENT_START_OK;
+}
+
+void AgentServerInit(void)
+{
+	agent_start(0);
+}
+
+AgentStartResult AgentServerStart(void)
+{
+	if (A.enabled) {
+		return AGENT_START_OK;
+	}
+	int prev_armed = A.send_armed; /* runtime arm state left by the previous run */
+	AgentStartResult r = agent_start(1);
+	if (r != AGENT_START_OK) {
+		return r;
+	}
+	/* Sole window that failed to bind: nobody serves the port, so surface it
+	 * instead of sitting enabled-but-dead. With other sessions alive, not
+	 * being broker is the normal state and the 1 Hz retry stands. */
+	if (!A.broker && !other_session_exists()) {
+		AgentServerEnd();
+		return AGENT_START_ERR_PORT;
+	}
+	A.send_armed = prev_armed && A.allow_send;
+	publish_status();
+	return AGENT_START_OK;
 }
 
 void AgentServerIdle(void)
@@ -857,6 +966,7 @@ void AgentServerEnd(void)
 		A.wsa_started = 0;
 	}
 	A.listening = 0;
+	A.enabled = 0;
 }
 
 void AgentServerArmSend(int arm)
@@ -881,11 +991,11 @@ int AgentServerCanArm(void)
 	return A.enabled && A.allow_send;
 }
 
-/* Title-bar indicator: "" / " [agent]" / " [agent:send]". */
+/* Title-bar indicator: " [agent:off]" / " [agent]" / " [agent:send]". */
 const wchar_t *AgentServerTitleTagW(void)
 {
 	if (!A.enabled) {
-		return L"";
+		return L" [agent:off]";
 	}
 	return send_allowed() ? L" [agent:send]" : L" [agent]";
 }

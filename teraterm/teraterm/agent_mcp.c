@@ -223,7 +223,7 @@ size_t agent_mcp_handle(const AgentBackend *be, const char *body, size_t len, ch
 
 struct AgentMcpConn {
 	const AgentBackend *be;
-	char token[128];
+	char token[768]; /* fits any 255-wchar ini value as UTF-8 */
 	int require_token;
 	char bind_host[64];
 	char *buf; /* request accumulator */
