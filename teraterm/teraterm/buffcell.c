@@ -246,7 +246,7 @@ void CellsMove(buff_char_t *dest, const buff_char_t *src, size_t count)
 
 
 	if (dest < src) {
-		// 前からコピーする? -> memcpyW() でok
+		// 前からコピーする? -> CellsCopy() でok
 		CellsCopy(dest, src, count);
 	}
 	else {

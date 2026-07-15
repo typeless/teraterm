@@ -57,6 +57,9 @@
     <ClCompile Include="buffer.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
+    <ClCompile Include="buffcell.c">
+      <Filter>Source Files %28C%29</Filter>
+    </ClCompile>
     <ClCompile Include="clipboar.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
@@ -484,6 +487,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="buffcell.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="clipboar.h">
