@@ -431,6 +431,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPreInst,
 
 	// Agent control server (default OFF; starts only if [Agent] Enable=on).
 	AgentServerInit();
+	ChangeTitle(); // the title was first set before init; refresh the agent tag
 
 	// [Tera Term]セクションのDLG_SYSTEM_FONTをとりあえずセットする
 	SetDialogFont(ts.DialogFontNameW, ts.DialogFontPoint, ts.DialogFontCharSet,

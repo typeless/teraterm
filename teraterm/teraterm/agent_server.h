@@ -22,7 +22,21 @@ extern "C" {
  * install the receive tap. Safe to call once at startup. */
 void AgentServerInit(void);
 
-/* Stop the listener, close clients, remove the tap. */
+typedef enum {
+	AGENT_START_OK,
+	AGENT_START_ERR_CONFIG,   /* [Agent] ports or Token misconfigured, or ini not writable */
+	AGENT_START_ERR_PORT,     /* configured port is held by another program */
+	AGENT_START_ERR_RESOURCE, /* winsock/shared-memory/session-slot/window failure */
+} AgentStartResult;
+
+/* Menu toggle: start the agent now, overriding [Agent] Enable (the rest of the
+ * config is re-read). A previous runtime send-disarm is preserved; arming never
+ * turns on as a side effect of restarting the server. */
+AgentStartResult AgentServerStart(void);
+
+/* Stop the listener, close clients, remove the tap, release the session slot.
+ * Safe to call at any time; the Agent server menu toggle restarts via
+ * AgentServerStart(). */
 void AgentServerEnd(void);
 
 /* Periodic tick from the main idle loop: publishes this window's status, drains
@@ -38,7 +52,7 @@ int AgentServerIsListening(void);
 int AgentServerIsSendArmed(void);
 int AgentServerCanArm(void);
 
-/* Title-bar indicator suffix ("" when disabled). */
+/* Title-bar indicator suffix (" [agent:off]" when disabled). */
 const wchar_t *AgentServerTitleTagW(void);
 
 #ifdef __cplusplus

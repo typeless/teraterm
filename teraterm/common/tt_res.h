@@ -338,6 +338,7 @@
 #define ID_CONTROL_MACRO                50470
 #define ID_CONTROL_SHOW_MACRO           50480
 #define ID_CONTROL_AGENTSEND            50490
+#define ID_CONTROL_AGENTSERVER          50491
 #define ID_HELP_INDEX2                  50910
 #define ID_HELP_ABOUT                   50990
 #define ID_TEKFILE_PRINT                51110

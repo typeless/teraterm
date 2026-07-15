@@ -718,6 +718,7 @@ BEGIN
         MENUITEM "&Macro",                      ID_CONTROL_MACRO
         MENUITEM "Show Macro &Window",          ID_CONTROL_SHOW_MACRO
         MENUITEM SEPARATOR
+        MENUITEM "Agent ser&ver",               ID_CONTROL_AGENTSERVER
         MENUITEM "&Agent send",                 ID_CONTROL_AGENTSEND
     END
     POPUP "&Help"

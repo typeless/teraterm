@@ -1101,6 +1101,7 @@ void CVTWindow::InitMenu(HMENU *Menu)
 		{ ID_CONTROL_CLOSETEK, "MENU_CONTROL_CLOSETEK" },
 		{ ID_CONTROL_MACRO, "MENU_CONTROL_MACRO" },
 		{ ID_CONTROL_SHOW_MACRO, "MENU_CONTROL_SHOW_MACRO" },
+		{ ID_CONTROL_AGENTSERVER, "MENU_CONTROL_AGENTSERVER" },
 		{ ID_CONTROL_AGENTSEND, "MENU_CONTROL_AGENTSEND" },
 	};
 	static const DlgTextInfo HelpMenuTextInfo[] = {
@@ -1314,6 +1315,9 @@ void CVTWindow::InitMenuPopup(HMENU SubMenu)
 			EnableMenuItem(ControlMenu,ID_CONTROL_MACRO,MF_BYCOMMAND | MF_ENABLED);
 			EnableMenuItem(ControlMenu,ID_CONTROL_SHOW_MACRO,MF_BYCOMMAND | MF_GRAYED);
 		}
+
+		CheckMenuItem(ControlMenu, ID_CONTROL_AGENTSERVER,
+					  MF_BYCOMMAND | (AgentServerIsEnabled() ? MF_CHECKED : MF_UNCHECKED));
 
 		if (AgentServerCanArm()) {
 			EnableMenuItem(ControlMenu, ID_CONTROL_AGENTSEND, MF_BYCOMMAND | MF_ENABLED);
@@ -4981,6 +4985,53 @@ void CVTWindow::OnShowMacroWindow()
 	RunMacroW(NULL,FALSE);
 }
 
+void CVTWindow::OnControlAgentServer()
+{
+	if (AgentServerIsEnabled()) {
+		AgentServerEnd();
+	}
+	else {
+		switch (AgentServerStart()) {
+		case AGENT_START_OK:
+			break;
+		case AGENT_START_ERR_CONFIG: {
+			static const TTMessageBoxInfoW info = {
+				"Tera Term",
+				"MSG_ERROR", L"ERROR",
+				"MSG_AGENT_START_CONFIG_ERROR",
+				L"Can't start the agent server. Check the [Agent] section of the setup file:\nPort or McpPort must be set, the file must be writable (a blank Token is\nauto-generated into it), and Token=none requires a loopback BindAddress.",
+				MB_OK | MB_ICONWARNING
+			};
+			TTMessageBoxW(HVTWin, &info, ts.UILanguageFileW);
+			break;
+		}
+		case AGENT_START_ERR_PORT: {
+			static const TTMessageBoxInfoW info = {
+				"Tera Term",
+				"MSG_ERROR", L"ERROR",
+				"MSG_AGENT_START_PORT_ERROR",
+				L"Can't start the agent server:\nthe configured port is already in use by another program.",
+				MB_OK | MB_ICONWARNING
+			};
+			TTMessageBoxW(HVTWin, &info, ts.UILanguageFileW);
+			break;
+		}
+		case AGENT_START_ERR_RESOURCE: {
+			static const TTMessageBoxInfoW info = {
+				"Tera Term",
+				"MSG_ERROR", L"ERROR",
+				"MSG_AGENT_START_RESOURCE_ERROR",
+				L"Can't start the agent server:\na system resource failed or all agent session slots are in use.",
+				MB_OK | MB_ICONWARNING
+			};
+			TTMessageBoxW(HVTWin, &info, ts.UILanguageFileW);
+			break;
+		}
+		}
+	}
+	ChangeTitle(); // refresh the title-bar indicator
+}
+
 void CVTWindow::OnControlAgentSend()
 {
 	if (!AgentServerCanArm()) {
@@ -5569,6 +5620,7 @@ LRESULT CVTWindow::Proc(UINT msg, WPARAM wp, LPARAM lp)
 		case ID_CONTROL_CLOSETEK: OnControlCloseTEK(); break;
 		case ID_CONTROL_MACRO: OnControlMacro(); break;
 		case ID_CONTROL_SHOW_MACRO: OnShowMacroWindow(); break;
+		case ID_CONTROL_AGENTSERVER: OnControlAgentServer(); break;
 		case ID_CONTROL_AGENTSEND: OnControlAgentSend(); break;
 		case ID_WINDOW_WINDOW: OnWindowWindow(); break;
 		case ID_WINDOW_MINIMIZEALL: OnWindowMinimizeAll(); break;

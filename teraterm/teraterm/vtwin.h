@@ -230,6 +230,7 @@ protected:
 	void OnControlCloseTEK();
 	void OnControlMacro();
 	void OnShowMacroWindow();
+	void OnControlAgentServer();
 	void OnControlAgentSend();
 	void OnWindowWindow();
 	void OnWindowMinimizeAll();
