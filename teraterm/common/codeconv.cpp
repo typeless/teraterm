@@ -421,54 +421,40 @@ size_t MBCPToUTF32(const char *mb_ptr, size_t mb_len, int code_page, unsigned in
  */
 size_t UTF32ToUTF8(uint32_t u32, char *u8_ptr_, size_t u8_len)
 {
-	size_t out_len = 0;
-	uint8_t *u8_ptr = (uint8_t *)u8_ptr_;
-	if (u8_ptr == NULL) {
-		u8_len = 4;
+	auto *dst = reinterpret_cast<uint8_t *>(u8_ptr_);
+
+	const size_t n = u32 <= 0x7f ? 1 : u32 <= 0x7ff ? 2 : u32 <= 0xffff ? 3 : u32 <= 0x10ffff ? 4 : 0;
+	if (n == 0) {
+		return 0; // outside the Unicode range
+	}
+	if (dst == NULL) {
+		return n; // length query
+	}
+	if (u8_len < n) {
+		return 0; // no room; write nothing (matches the legacy behaviour)
 	}
 
-	if (u32 <= 0x0000007f) {
-		// 0x00000000 <= u32 <= 0x0000007f
-		if (u8_len >= 1) {
-			if (u8_ptr != NULL) {
-				u8_ptr[0] = (uint8_t)u32;
-			}
-			out_len = 1;
-		}
-	} else if (u32 <= 0x000007ff) {
-		// 0x00000080 <= u32 <= 0x000007ff
-		if (u8_len >= 2) {
-			if (u8_ptr != NULL) {
-				u8_ptr[0] = ((u32 >> 6) & 0x1f) | 0xc0;
-				u8_ptr[1] = (u32 & 0x3f) | 0x80;
-			}
-			out_len = 2;
-		}
-	} else if (u32 <= 0x0000ffff) {
-		// 0x00000800 <= u32 <= 0x0000ffff
-		if (u8_len >= 3) {
-			if (u8_ptr != NULL) {
-				u8_ptr[0] = ((u32 >> 12) & 0xf) | 0xe0;
-				u8_ptr[1] = ((u32 >> 6) & 0x3f) | 0x80;
-				u8_ptr[2] = (u32 & 0x3f) | 0x80;
-			}
-			out_len = 3;
-		}
-	} else if (u32 <= 0x0010ffff) {
-		// 0x00010000 <= u32 <= 0x0010ffff
-		if (u8_len >= 4) {
-			if (u8_ptr != NULL) {
-				u8_ptr[0] = ((uint8_t)(u32 >> 18)) | 0xf0;
-				u8_ptr[1] = ((u32 >> 12) & 0x3f) | 0x80;
-				u8_ptr[2] = ((u32 >> 6) & 0x3f) | 0x80;
-				u8_ptr[3] = (u32 & 0x3f) | 0x80;
-			}
-			out_len = 4;
-		}
-	} else {
-		out_len = 0;
+	switch (n) {
+	case 1:
+		dst[0] = (uint8_t)u32;
+		break;
+	case 2:
+		dst[0] = 0xc0 | ((u32 >> 6) & 0x1f);
+		dst[1] = 0x80 | (u32 & 0x3f);
+		break;
+	case 3:
+		dst[0] = 0xe0 | ((u32 >> 12) & 0x0f);
+		dst[1] = 0x80 | ((u32 >> 6) & 0x3f);
+		dst[2] = 0x80 | (u32 & 0x3f);
+		break;
+	case 4:
+		dst[0] = 0xf0 | ((u32 >> 18) & 0x07);
+		dst[1] = 0x80 | ((u32 >> 12) & 0x3f);
+		dst[2] = 0x80 | ((u32 >> 6) & 0x3f);
+		dst[3] = 0x80 | (u32 & 0x3f);
+		break;
 	}
-	return out_len;
+	return n;
 }
 
 /**
