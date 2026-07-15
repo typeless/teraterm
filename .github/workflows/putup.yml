@@ -13,6 +13,16 @@ permissions:
   contents: read
 
 jobs:
+  # Fast pre-merge signal: pure/protocol unit tests built with the system
+  # compiler under ASan/UBSan. No cross toolchain, so it finishes in ~1 min and
+  # gates every push independently of the (slower) Windows cross-build below.
+  unit-tests-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run host unit tests (ASan/UBSan)
+        run: make -C tests/unit check
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -31,12 +41,46 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/typeless/putup/main/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # The splatted MSVC SDK/CRT is ~630 MB and identical across runs for a
+      # fixed xwin version + arch; caching it removes the dominant cold cost.
+      - name: Cache xwin splat
+        id: cache-xwin
+        uses: actions/cache@v4
+        with:
+          path: ~/.xwin/splat
+          key: xwin-splat-0.9.0-x86_64
+
       - name: Fetch MSVC CRT + Windows SDK (xwin)
+        if: steps.cache-xwin.outputs.cache-hit != 'true'
         run: |
           curl -fsSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz | tar -xz
           ./xwin-*/xwin --accept-license --arch x86_64 splat --output "$HOME/.xwin/splat"
 
+      # Third-party sources are pinned by version in this file, so key the cache
+      # on its hash; a version bump here invalidates the cache automatically.
+      - name: Cache vendored third-party sources
+        id: cache-libs
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/oniguruma
+            libs/SFMT
+            libs/zlib
+            libs/libressl
+            libs/argon2
+            libs/cJSON
+          key: vendor-libs-${{ hashFiles('.github/workflows/putup.yml') }}
+
+      # The cached libs/ dirs also contain tracked build files (Tupfiles, headers).
+      # A restore overwrites the freshly checked-out copies with the snapshot from
+      # when the cache was saved, and the key only hashes putup.yml — so an edit to
+      # a tracked libs/ file would otherwise be silently reverted. Restore them from
+      # HEAD; untracked cached upstream sources are left in place.
+      - name: Restore tracked libs files after cache
+        run: git checkout -- libs
+
       - name: Vendor third-party sources
+        if: steps.cache-libs.outputs.cache-hit != 'true'
         run: |
           set -eux
           tmp="$(mktemp -d)"
