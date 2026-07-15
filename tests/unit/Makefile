@@ -33,7 +33,7 @@ AGENT_H    := $(wildcard $(TT)/agent_*.h)
 # Legacy CHECK()-harness tests (C, self-contained). Kept running verbatim.
 AGENT_TESTS := agent_jsonrpc agent_mcp agent_shmem
 # Catch2 tests (C++), one binary each.
-CATCH_TESTS := codeconv
+CATCH_TESTS := codeconv telnet_neg
 
 ALL_TESTS := $(AGENT_TESTS) $(CATCH_TESTS)
 
@@ -79,6 +79,13 @@ $(B)/agent_shmem: $(TT)/tests/test_agent_shmem.c $(TT)/agent_shmem.c $(AGENT_H) 
 # --- Catch2 tests (C++ + winhost shim) ---
 $(B)/codeconv: test_codeconv.cpp $(COMMON)/codeconv.cpp $(B)/winhost.o $(B)/catch_amalgamated.o $(CODECONV_H) | $(B)
 	$(CXX) $(CXXFLAGS) -Iwinhost -I$(COMMON) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
+
+# telnet_neg is pure C (no shim); compile it as C, link with the C++ test.
+$(B)/telnet_neg_impl.o: $(TT)/telnet_neg.c $(TT)/telnet_neg.h $(TT)/telnet_defs.h | $(B)
+	$(CC) $(CFLAGS) -I$(TT) -c $< -o $@
+
+$(B)/telnet_neg: test_telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h $(B)/telnet_neg_impl.o $(B)/catch_amalgamated.o | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
 clean:
 	@rm -rf $(B)

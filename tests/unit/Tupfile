@@ -8,12 +8,16 @@ include_rules
 # compiled straight in (rather than linked from common_static) to keep this a
 # small, self-contained test binary. Runs on the windows-latest CI lane, and
 # locally under Wine.
-CXXFLAGS += -I$(S)/teraterm/common -I$(S)/libs/catch2
+CXXFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(S)/libs/catch2
+CFLAGS += -I$(S)/teraterm/teraterm
 
 srcs_cpp += test_codeconv.cpp
 srcs_cpp += $(S)/teraterm/common/codeconv.cpp
+srcs_cpp += test_telnet_neg.cpp
+srcs_c += $(S)/teraterm/teraterm/telnet_neg.c
 
 : foreach $(srcs_cpp) |> !cxx |> {objs}
+: foreach $(srcs_c) |> !cc |> {objs}
 : $(S)/libs/catch2/catch_amalgamated.cpp |> !cxx_thirdparty |> {objs}
 
 LDFLAGS += /SUBSYSTEM:CONSOLE
