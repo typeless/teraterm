@@ -129,3 +129,57 @@ TEST_CASE("UTF8ToUTF32 currently accepts over-range and surrogate encodings",
 	REQUIRE(UTF8ToUTF32("\xED\xA0\x80", 3, &u32) == 3);
 	REQUIRE(u32 == 0xD800);
 }
+
+TEST_CASE("UTF8ToUTF32 stops at a truncated multibyte sequence", "[codeconv][utf8]")
+{
+	// A lead byte announcing N bytes but fewer available must not over-read.
+	uint32_t u32 = 0xDEAD;
+	REQUIRE(UTF8ToUTF32("\xE2\x82", 2, &u32) == 0); // euro sign, one byte short
+	REQUIRE(u32 == 0);
+	REQUIRE(UTF8ToUTF32("\xF0\x9F", 2, &u32) == 0); // 4-byte lead, two short
+	REQUIRE(u32 == 0);
+}
+
+TEST_CASE("UTF16ToUTF32 decodes BMP, surrogate pairs, and rejects lone surrogates",
+		  "[codeconv][utf16]")
+{
+	uint32_t u32 = 0;
+
+	const wchar_t bmp[] = {0x20AC};
+	REQUIRE(UTF16ToUTF32(bmp, 1, &u32) == 1);
+	REQUIRE(u32 == 0x20AC);
+
+	const wchar_t pair[] = {0xD83D, 0xDE00}; // U+1F600
+	REQUIRE(UTF16ToUTF32(pair, 2, &u32) == 2);
+	REQUIRE(u32 == 0x1F600);
+
+	const wchar_t lone_high[] = {0xD800, 0x0041};
+	REQUIRE(UTF16ToUTF32(lone_high, 2, &u32) == 0); // high not followed by low
+	const wchar_t lone_low[] = {0xDC00};
+	REQUIRE(UTF16ToUTF32(lone_low, 1, &u32) == 0);  // low surrogate first
+	const wchar_t high_at_end[] = {0xD800};
+	REQUIRE(UTF16ToUTF32(high_at_end, 1, &u32) == 0); // high with no room for low
+}
+
+TEST_CASE("scalar encoders report the required length for a NULL buffer",
+		  "[codeconv][utf8][utf16]")
+{
+	// Passing a NULL destination is the documented length-query form.
+	REQUIRE(UTF32ToUTF8(0x1F600, nullptr, 0) == 4);
+	REQUIRE(UTF32ToUTF8(0x41, nullptr, 0) == 1);
+	REQUIRE(UTF32ToUTF16(0x1F600, nullptr, 0) == 2);
+	REQUIRE(UTF32ToUTF16(0x41, nullptr, 0) == 1);
+}
+
+TEST_CASE("surrogate predicates classify the UTF-16 code-unit ranges", "[codeconv][utf16]")
+{
+	REQUIRE(IsHighSurrogate(0xD800));
+	REQUIRE(IsHighSurrogate(0xDBFF));
+	REQUIRE_FALSE(IsHighSurrogate(0xDC00));
+	REQUIRE_FALSE(IsHighSurrogate(0x0041));
+
+	REQUIRE(IsLowSurrogate(0xDC00));
+	REQUIRE(IsLowSurrogate(0xDFFF));
+	REQUIRE_FALSE(IsLowSurrogate(0xDBFF));
+	REQUIRE_FALSE(IsLowSurrogate(0xE000));
+}

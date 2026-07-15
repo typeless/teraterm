@@ -267,78 +267,64 @@ next_convert:
  */
 size_t UTF8ToUTF32(const char *u8_ptr_, size_t u8_len, uint32_t *u32_)
 {
-	uint8_t *u8_ptr = (uint8_t *)u8_ptr_;
-	uint32_t u32;
-	size_t u8_in;
-	const uint8_t c1 = *u8_ptr++;
-    if (c1 <= 0x7f) {
-		// 1byte
-		if (u8_len >= 1) {
-			u32 = (uint32_t)c1;
-			u8_in = 1;
-		} else {
-			goto error;
-		}
-	} else if (0xc2 <= c1 && c1 <= 0xdf) {
-		// 2byte
-		if (u8_len >= 2) {
-			const uint8_t c2 = *u8_ptr++;
-			if (((c1 & 0x1e) != 0) &&
-				((c2 & 0xc0) == 0x80))
-			{
-				u32 = (uint32_t)((c1 & 0x1f) << 6) + (c2 & 0x3f);
-				u8_in = 2;
-			} else {
-				goto error;
-			}
-		} else {
-			goto error;
-		}
-	} else if (0xe0 <= c1 && c1 <= 0xef) {
-		// 3byte
-		if (u8_len >= 3) {
-			const uint8_t c2 = *u8_ptr++;
-			const uint8_t c3 = *u8_ptr++;
-			if ((((c1 & 0x0f) != 0) || ((c2 & 0x20) != 0)) &&
-				((c2 & 0xc0) == 0x80) &&
-				((c3 & 0xc0) == 0x80) )
-			{
-				u32 = (uint32_t)((c1 & 0x0f) << 12) + ((c2 & 0x3f) << 6);
-				u32 += (c3 & 0x3f);
-				u8_in = 3;
-			} else {
-				goto error;
-			}
-		} else {
-			goto error;
-		}
-	} else if (0xf0 <= c1 && c1 <= 0xf7) {
-		// 4byte
-		if (u8_len >= 4) {
-			const uint8_t c2 = *u8_ptr++;
-			const uint8_t c3 = *u8_ptr++;
-			const uint8_t c4 = *u8_ptr++;
-			if ((((c1 & 0x07) != 0) || ((c2 & 0x30) != 0)) &&
-				((c2 & 0xc0) == 0x80) &&
-				((c3 & 0xc0) == 0x80) &&
-				((c4 & 0xc0) == 0x80) )
-			{
-				u32 = (uint32_t)((c1 & 0x07) << 18) + ((c2 & 0x3f) << 12);
-				u32 += ((c3 & 0x3f) << 6) + (c4 & 0x3f);
-				u8_in = 4;
-			} else {
-				goto error;
-			}
-		} else {
-			goto error;
-		}
-    } else {
-	error:
-		u32 = 0;
-		u8_in = 0;
+	const auto *p = reinterpret_cast<const uint8_t *>(u8_ptr_);
+	const auto fail = [&]() -> size_t { *u32_ = 0; return 0; };
+
+	// The length is checked before every read, so a truncated sequence never
+	// reads past u8_len (the legacy code read the lead byte unconditionally).
+	if (u8_len < 1) {
+		return fail();
 	}
-	*u32_ = u32;
-	return u8_in;
+	const uint8_t c1 = p[0];
+
+	if (c1 <= 0x7f) {
+		*u32_ = c1;
+		return 1;
+	}
+	if (0xc2 <= c1 && c1 <= 0xdf) {
+		if (u8_len < 2) {
+			return fail();
+		}
+		const uint8_t c2 = p[1];
+		if ((c1 & 0x1e) != 0 && (c2 & 0xc0) == 0x80) {
+			*u32_ = ((c1 & 0x1fu) << 6) | (c2 & 0x3fu);
+			return 2;
+		}
+		return fail();
+	}
+	if (0xe0 <= c1 && c1 <= 0xef) {
+		if (u8_len < 3) {
+			return fail();
+		}
+		const uint8_t c2 = p[1];
+		const uint8_t c3 = p[2];
+		// The (c1&0x0f)|(c2&0x20) test rejects the overlong U+0000..U+07FF forms
+		// but intentionally still admits the surrogate range (kept bug-compatible
+		// with the legacy decoder; see the characterization tests).
+		if (((c1 & 0x0f) != 0 || (c2 & 0x20) != 0) &&
+			(c2 & 0xc0) == 0x80 && (c3 & 0xc0) == 0x80) {
+			*u32_ = ((c1 & 0x0fu) << 12) | ((c2 & 0x3fu) << 6) | (c3 & 0x3fu);
+			return 3;
+		}
+		return fail();
+	}
+	if (0xf0 <= c1 && c1 <= 0xf7) {
+		if (u8_len < 4) {
+			return fail();
+		}
+		const uint8_t c2 = p[1];
+		const uint8_t c3 = p[2];
+		const uint8_t c4 = p[3];
+		// Admits leads up to 0xf7 (codepoints above U+10FFFF), matching legacy.
+		if (((c1 & 0x07) != 0 || (c2 & 0x30) != 0) &&
+			(c2 & 0xc0) == 0x80 && (c3 & 0xc0) == 0x80 && (c4 & 0xc0) == 0x80) {
+			*u32_ = ((c1 & 0x07u) << 18) | ((c2 & 0x3fu) << 12) |
+					((c3 & 0x3fu) << 6) | (c4 & 0x3fu);
+			return 4;
+		}
+		return fail();
+	}
+	return fail();
 }
 
 /**
