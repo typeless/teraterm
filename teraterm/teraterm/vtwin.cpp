@@ -549,6 +549,60 @@ private:
 
 static SerialReconnect *serail_reconnect;
 
+// ts/cv access for the sealed buffer.c. GetConfig snapshots the settings the
+// scroll buffer reads; the four setters mirror its derived values back to ts
+// synchronously (ini-save and the setup dialogs read them); NotifyWinSize keeps
+// the telnet window-size report guarded and the TTX hook unconditional, exactly
+// as buffer.c did inline before the seal.
+static void buffGetConfig(BuffConfig *out)
+{
+	out->KanjiCode = ts.KanjiCode;
+	out->EnableContinuedLineCopy = ts.EnableContinuedLineCopy;
+	out->EnableScrollBuff = ts.EnableScrollBuff;
+	out->AutoWinResize = ts.AutoWinResize;
+	out->AutoScrollOnlyInBottomLine = ts.AutoScrollOnlyInBottomLine;
+	out->TermIsWin = ts.TermIsWin;
+	out->TermFlag = ts.TermFlag;
+	out->TabStopFlag = ts.TabStopFlag;
+	out->VTCompatTab = ts.VTCompatTab;
+	out->DelimDBCS = ts.DelimDBCS;
+	out->UnicodeAmbiguousWidth = ts.UnicodeAmbiguousWidth;
+	out->UnicodeOverrideCharWidthEnable = ts.UnicodeOverrideCharWidthEnable;
+	out->UnicodeEmojiOverride = ts.UnicodeEmojiOverride;
+	out->UnicodeEmojiWidth = ts.UnicodeEmojiWidth;
+	out->SelectStartDelay = ts.SelectStartDelay;
+	out->EnableClickableUrl = ts.EnableClickableUrl;
+	out->ScrollBuffSize = ts.ScrollBuffSize;
+	out->ScrollBuffMax = ts.ScrollBuffMax;
+	out->TerminalWidth = ts.TerminalWidth;
+	out->TerminalHeight = ts.TerminalHeight;
+	out->DelimListW = ts.DelimListW;
+	out->ClickableUrlBrowser = ts.ClickableUrlBrowser;
+	out->ClickableUrlBrowserArg = ts.ClickableUrlBrowserArg;
+}
+
+static void buffSetScrollBuffSize(LONG value) { ts.ScrollBuffSize = value; }
+static void buffSetScrollBuffMax(LONG value) { ts.ScrollBuffMax = value; }
+static void buffSetTerminalWidth(int value) { ts.TerminalWidth = value; }
+static void buffSetTerminalHeight(int value) { ts.TerminalHeight = value; }
+
+static void buffNotifyWinSize(int cols, int lines)
+{
+	if (cv.Ready && cv.TelFlag) {
+		TelInformWinSize(cols, lines);
+	}
+	TTXSetWinSize(lines, cols); /* TTPLUG */
+}
+
+static const BuffOp buffOp = {
+	buffGetConfig,
+	buffSetScrollBuffSize,
+	buffSetScrollBuffMax,
+	buffSetTerminalWidth,
+	buffSetTerminalHeight,
+	buffNotifyWinSize,
+};
+
 /////////////////////////////////////////////////////////////////////////////
 // CVTWindow constructor
 
@@ -655,7 +709,7 @@ CVTWindow::CVTWindow(HINSTANCE hInstance)
 	}
 
 	/* Initialize scroll buffer */
-	InitBuffer((IdVtDrawAPI)ts.VTDrawAPI);
+	InitBuffer((IdVtDrawAPI)ts.VTDrawAPI, &buffOp);
 	BuffSetDispCodePage(ts.VTDrawAnsiCodePage);
 
 	if (ts.HideTitle>0) {

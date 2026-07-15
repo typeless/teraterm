@@ -39,11 +39,8 @@
 
 #include "tttypes.h"
 #include "tttypes_charset.h"
-#include "ttwinman.h"
 #include "teraprn.h"
 #include "vtdisp.h"
-#include "telnet.h"
-#include "ttplug.h" /* TTPLUG */
 #include "codeconv.h"
 #include "unicode.h"
 #include "buffer.h"
@@ -103,6 +100,19 @@ static int SaveBuffY;
 // ANSI表示用に変換するときのCodePage
 static int CodePage = 932;
 vtdraw_t *vt_src;
+
+// Owner-supplied ts/cv access, registered once at InitBuffer. See buffer.h.
+static BuffOp Op;
+
+// Snapshot the current terminal settings at the point of use. Single-threaded,
+// so within one call the values are constant; this reproduces the old live
+// reads of the global ts without buffer.c depending on it.
+static BuffConfig getcfg(void)
+{
+	BuffConfig c;
+	Op.GetConfig(&c);
+	return c;
+}
 
 static void BuffDrawLineI(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd);
 static void ChangeSelectRegion(void);
@@ -229,14 +239,18 @@ static BOOL ChangeBuffer(int Nx, int Ny)
 	WORD LockOld;
 	buff_char_t *CodeDestW;
 
+	BuffConfig cfg = getcfg();
+	LONG scroll_buff_max = cfg.ScrollBuffMax;
+
 	if (Nx > BuffXMax) {
 		Nx = BuffXMax;
 	}
-	if (ts.ScrollBuffMax > BuffYMax) {
-		ts.ScrollBuffMax = BuffYMax;
+	if (scroll_buff_max > BuffYMax) {
+		scroll_buff_max = BuffYMax;
+		Op.SetScrollBuffMax(scroll_buff_max);
 	}
-	if (Ny > ts.ScrollBuffMax) {
-		Ny = ts.ScrollBuffMax;
+	if (Ny > scroll_buff_max) {
+		Ny = scroll_buff_max;
 	}
 
 	if ( (LONG)Nx * (LONG)Ny > BuffSizeMax ) {
@@ -345,15 +359,19 @@ allocate_error:
 	return FALSE;
 }
 
-void InitBuffer(IdVtDrawAPI draw_api)
+void InitBuffer(IdVtDrawAPI draw_api, const BuffOp *op)
 {
 	int Ny;
+	BuffConfig cfg;
+
+	Op = *op;
+	cfg = getcfg();
 
 	UseUnicodeApi = draw_api == IdVtDrawAPIUnicode ? TRUE : FALSE;
 
 	/* setup terminal */
-	NumOfColumns = ts.TerminalWidth;
-	NumOfLines = ts.TerminalHeight;
+	NumOfColumns = cfg.TerminalWidth;
+	NumOfLines = cfg.TerminalHeight;
 
 	if (NumOfColumns <= 0)
 		NumOfColumns = 80;
@@ -366,11 +384,13 @@ void InitBuffer(IdVtDrawAPI draw_api)
 		NumOfLines = TermHeightMax;
 
 	/* setup window */
-	if (ts.EnableScrollBuff>0) {
-		if (ts.ScrollBuffSize < NumOfLines) {
-			ts.ScrollBuffSize = NumOfLines;
+	if (cfg.EnableScrollBuff>0) {
+		LONG scroll_buff_size = cfg.ScrollBuffSize;
+		if (scroll_buff_size < NumOfLines) {
+			scroll_buff_size = NumOfLines;
+			Op.SetScrollBuffSize(scroll_buff_size);
 		}
-		Ny = ts.ScrollBuffSize;
+		Ny = scroll_buff_size;
 	}
 	else {
 		Ny = NumOfLines;
@@ -380,8 +400,8 @@ void InitBuffer(IdVtDrawAPI draw_api)
 		PostQuitMessage(0);
 	}
 
-	if (ts.EnableScrollBuff>0) {
-		ts.ScrollBuffSize = NumOfLinesInBuff;
+	if (cfg.EnableScrollBuff>0) {
+		Op.SetScrollBuffSize(NumOfLinesInBuff);
 	}
 
 	StatusLine = 0;
@@ -813,12 +833,13 @@ void BuffInsertLines(int Count, int YEnd)
  */
 void BuffEraseCharsInLine(int XStart, int Count)
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t * CodeLineW = &CodeBuffW[LinePtr];
 	BOOL LineContinued=FALSE;
 	int head = 0;
 	int tail = 0;
 
-	if (ts.EnableContinuedLineCopy && XStart == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
+	if (cfg.EnableContinuedLineCopy && XStart == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
 		LineContinued = TRUE;
 	}
 
@@ -839,7 +860,7 @@ void BuffEraseCharsInLine(int XStart, int Count)
 	NewLine(PageStart+CursorY);
 	memsetW(&(CodeLineW[XStart]),0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, Count);
 
-	if (ts.EnableContinuedLineCopy) {
+	if (cfg.EnableContinuedLineCopy) {
 		if (LineContinued) {
 			BuffLineContinued(TRUE);
 		}
@@ -1524,6 +1545,7 @@ static int MoveCharPtr(LONG Line, int *x, int dx)
  */
 static wchar_t *BuffGetStringForCB(int sx, int sy, int ex, int ey, BOOL box_select, size_t *_str_len)
 {
+	BuffConfig cfg = getcfg();
 	wchar_t *str_w;
 	size_t str_size;	// 確保したサイズ
 	size_t k;
@@ -1564,7 +1586,7 @@ static wchar_t *BuffGetStringForCB(int sx, int sy, int ex, int ey, BOOL box_sele
 				IEnd = NumOfColumns - 1;
 
 				// 継続行コピー設定
-				if (ts.EnableContinuedLineCopy) {
+				if (cfg.EnableContinuedLineCopy) {
 					LONG NextTmpPtr = NextLinePtr(TmpPtr);
 					if ((CodeBuffW[NextTmpPtr].attr & AttrLineContinued) != 0) {
 						// 次の行に継続している
@@ -2128,7 +2150,7 @@ static BOOL IsDBCS(IdKanjiCode code)
 	return FALSE;
 }
 
-static BOOL BuffIsHalfWidthFromPropery(const TTTSet *ts_, char width_property)
+static BOOL BuffIsHalfWidthFromPropery(const BuffConfig *cfg, char width_property)
 {
 	switch (width_property) {
 	case 'H':	// Halfwidth
@@ -2137,12 +2159,12 @@ static BOOL BuffIsHalfWidthFromPropery(const TTTSet *ts_, char width_property)
 	default:
 		return TRUE;
 	case 'A':	// Ambiguous 曖昧
-		if (ts_->KanjiCode == IdUTF8) {
-			if (ts_->UnicodeAmbiguousWidth == 2) {
+		if (cfg->KanjiCode == IdUTF8) {
+			if (cfg->UnicodeAmbiguousWidth == 2) {
 				// 全角として扱う
 				return FALSE;
 			}
-		} else if (IsDBCS(ts_->KanjiCode)) {
+		} else if (IsDBCS(cfg->KanjiCode)) {
 			// 全角として扱う
 			return FALSE;
 		}
@@ -2153,26 +2175,26 @@ static BOOL BuffIsHalfWidthFromPropery(const TTTSet *ts_, char width_property)
 	}
 }
 
-static BOOL BuffIsHalfWidthFromCode(const TTTSet *ts_, unsigned int u32, char *width_property, char *emoji)
+static BOOL BuffIsHalfWidthFromCode(const BuffConfig *cfg, unsigned int u32, char *width_property, char *emoji)
 {
 	int width;
 	*width_property = UnicodeGetWidthProperty(u32);
 	*emoji = (char)UnicodeIsEmoji(u32);
-	if (ts_->KanjiCode == IdUTF8) {
+	if (cfg->KanjiCode == IdUTF8) {
 		// UTF-8(Unicode) のときの文字幅調整
 
 		// 文字ごとの文字幅オーバーライド設定
-		if( ts_->UnicodeOverrideCharWidthEnable != 0 &&
+		if( cfg->UnicodeOverrideCharWidthEnable != 0 &&
 			UnicodeOverrideWidthCheck(u32, &width) == TRUE) {
 			return width == 1 ? TRUE : FALSE;
 		}
 
 		// 絵文字文字幅オーバーライド設定
-		if (ts_->UnicodeEmojiOverride) {
+		if (cfg->UnicodeEmojiOverride) {
 			if (*emoji) {
 				// 絵文字だった場合
 				if (u32 < 0x1f000) {
-					if (ts_->UnicodeEmojiWidth == 2) {
+					if (cfg->UnicodeEmojiWidth == 2) {
 						// 全角
 						return FALSE;
 					}
@@ -2188,7 +2210,7 @@ static BOOL BuffIsHalfWidthFromCode(const TTTSet *ts_, unsigned int u32, char *w
 			}
 		}
 	}
-	else if (IsDBCS(ts_->KanjiCode)) {
+	else if (IsDBCS(cfg->KanjiCode)) {
 		// DBCS
 
 		// 絵文字は全角
@@ -2198,7 +2220,7 @@ static BOOL BuffIsHalfWidthFromCode(const TTTSet *ts_, unsigned int u32, char *w
 	}
 
 	// 文字属性毎の文字幅
-	return BuffIsHalfWidthFromPropery(ts_, *width_property);
+	return BuffIsHalfWidthFromPropery(cfg, *width_property);
 }
 
 /**
@@ -2758,6 +2780,7 @@ static unsigned short ConvertACPChar(const buff_char_t *b)
  */
 int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t * CodeLineW = &CodeBuffW[LinePtr];
 	int move_x = 0;
 	static BOOL show_str_change = FALSE;
@@ -2777,7 +2800,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		return 0;
 	}
 
-	if (ts.EnableContinuedLineCopy && CursorX == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
+	if (cfg.EnableContinuedLineCopy && CursorX == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
 		Attr_Attr |= AttrLineContinued;
 	}
 
@@ -2846,7 +2869,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			// 描画予定がない(StrChangeCount==0)のに、
 			// 結合文字を受信した場合、描画する
 			if (Wrap) {
-				if (!BuffIsHalfWidthFromPropery(&ts, p->WidthProperty)) {
+				if (!BuffIsHalfWidthFromPropery(&cfg, p->WidthProperty)) {
 					// 行末に2セルの文字が描画済み、2セルの右側にカーソルがある状態
 					StrChangeStart = CursorX - 1;
 					StrChangeCount = 2;
@@ -2875,7 +2898,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 	else {
 		char width_property;
 		char emoji;
-		BOOL half_width = BuffIsHalfWidthFromCode(&ts, u32, &width_property, &emoji);
+		BOOL half_width = BuffIsHalfWidthFromCode(&cfg, u32, &width_property, &emoji);
 
 		p = &CodeLineW[CursorX];
 		// 現在の位置が全角の右側?
@@ -3440,6 +3463,7 @@ void UpdateStr(void)
 
 void MoveCursor(int Xnew, int Ynew)
 {
+	BuffConfig cfg = getcfg();
 	UpdateStr();
 
 	if (CursorY!=Ynew) {
@@ -3451,7 +3475,7 @@ void MoveCursor(int Xnew, int Ynew)
 	Wrap = FALSE;
 
 	/* 最下行でだけ自動スクロールする*/
-	if (ts.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
+	if (cfg.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
 		DispScrollToCursor(vt_src, CursorX, CursorY);
 	}
 }
@@ -3460,9 +3484,10 @@ void MoveRight(void)
 /* move cursor right, but dont update screen.
   this procedure must be called from DispChar&DispKanji only */
 {
+	BuffConfig cfg = getcfg();
 	CursorX++;
 	/* 最下行でだけ自動スクロールする */
-	if (ts.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
+	if (cfg.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
 		DispScrollToCursor(vt_src, CursorX, CursorY);
 	}
 }
@@ -3511,6 +3536,7 @@ void ScrollUp1Line(void)
 
 void BuffScrollNLines(int n)
 {
+	BuffConfig cfg = getcfg();
 	int i, linelen;
 	int extl=0, extr=0;
 	LONG SrcPtr, DestPtr;
@@ -3524,7 +3550,7 @@ void BuffScrollNLines(int n)
 		if (CursorBottom == NumOfLines-1) {
 			WinOrgY = WinOrgY-n;
 			/* 最下行でだけ自動スクロールする */
-			if (ts.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
+			if (cfg.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
 				NewOrgY = WinOrgY;
 			}
 			BuffScroll(n,CursorBottom);
@@ -3533,7 +3559,7 @@ void BuffScrollNLines(int n)
 		}
 		else if (CursorY <= CursorBottom) {
 			/* 最下行でだけ自動スクロールする */
-			if (ts.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
+			if (cfg.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
 				/* スクロールさせない場合の処理 */
 				WinOrgY = WinOrgY-n;
 				NewOrgY = WinOrgY;
@@ -3715,9 +3741,10 @@ void CursorUpWithScroll(void)
  */
 static BOOL IsDelimiter(LONG Line, int CharPtr)
 {
+	BuffConfig cfg = getcfg();
 	const buff_char_t *b = &CodeBuffW[Line+CharPtr];
 	wchar_t *wcs = GetWCS(b);
-	wchar_t *findp = wcsstr(ts.DelimListW, wcs);
+	wchar_t *findp = wcsstr(cfg.DelimListW, wcs);
 	BOOL find = (findp != NULL);
 	free(wcs);
 	return find;
@@ -3743,6 +3770,7 @@ static void GetMinMax(int i1, int i2, int i3, int *min, int *max)
 
 static void invokeBrowserWithUrl(const wchar_t *url)
 {
+	BuffConfig cfg = getcfg();
 	static const wchar_t *webbrowser_schemes[] = {
 		L"http://",
 		L"https://",
@@ -3757,11 +3785,11 @@ static void invokeBrowserWithUrl(const wchar_t *url)
 		}
 	}
 
-	if (use_browser && ts.ClickableUrlBrowser[0] != 0) {
+	if (use_browser && cfg.ClickableUrlBrowser[0] != 0) {
 		// ブラウザを使用する
-		wchar_t *browser = ToWcharA(ts.ClickableUrlBrowser);
+		wchar_t *browser = ToWcharA(cfg.ClickableUrlBrowser);
 		wchar_t *param;
-		aswprintf(&param, L"%hs %s", ts.ClickableUrlBrowserArg, url);
+		aswprintf(&param, L"%hs %s", cfg.ClickableUrlBrowserArg, url);
 
 		HINSTANCE r = ShellExecuteW(NULL, NULL, browser, param, NULL, SW_SHOWNORMAL);
 		free(param);
@@ -4064,11 +4092,12 @@ static void ChangeSelectRegion(void)
 
 BOOL BuffUrlDblClk(int Xw, int Yw)
 {
+	BuffConfig cfg = getcfg();
 	int X, Y;
 	LONG TmpPtr;
 	BOOL url_invoked = FALSE;
 
-	if (! ts.EnableClickableUrl) {
+	if (! cfg.EnableClickableUrl) {
 		return FALSE;
 	}
 
@@ -4123,6 +4152,7 @@ typedef struct delimiter_work_tag {
  */
 static BOOL CheckDelimiterChar(LONG ptr, int x, void *vwork)
 {
+	BuffConfig cfg = getcfg();
 	delimiter_work *work = (delimiter_work *)vwork;
 	const buff_char_t *b = CodeBuffW + ptr + x;
 
@@ -4136,7 +4166,7 @@ static BOOL CheckDelimiterChar(LONG ptr, int x, void *vwork)
 	else {
 		// 非区切り文字からスタートした場合
 		if (IsDelimiter(ptr, x) ||
-			(ts.DelimDBCS != 0 && ((b->cell == 1) != work->start_cell))) {
+			(cfg.DelimDBCS != 0 && ((b->cell == 1) != work->start_cell))) {
 			// 現在位置
 			//		区切り文字になった
 			//		スタート文字のセル数と異なるセル数(1orその他)となった
@@ -4206,6 +4236,7 @@ void BuffDblClk(int Xw, int Yw)
 //    Xw: horizontal position in window coordinate (pixels)
 //    Yw: vertical
 {
+	BuffConfig cfg = getcfg();
 	int X, Y, YStart, YEnd;
 	int IStart, IEnd;
 	LONG TmpPtr;
@@ -4243,12 +4274,12 @@ void BuffDblClk(int Xw, int Yw)
 			int dest_y;
 
 			// 前方の区切りを探す
-			SearchDelimiterPrev(IStart, YStart, ts.EnableContinuedLineCopy, &dest_x, &dest_y);
+			SearchDelimiterPrev(IStart, YStart, cfg.EnableContinuedLineCopy, &dest_x, &dest_y);
 			IStart = dest_x;
 			YStart = dest_y;
 
 			// 後方の区切りを探す
-			SearchDelimiterNext(IEnd, YEnd, ts.EnableContinuedLineCopy, &dest_x, &dest_y);
+			SearchDelimiterNext(IEnd, YEnd, cfg.EnableContinuedLineCopy, &dest_x, &dest_y);
 			IEnd = dest_x + 1; // 終端の一つ後ろ
 			YEnd = dest_y;
 		}
@@ -4433,12 +4464,13 @@ void BuffStartSelect(int Xw, int Yw, BOOL Box, BOOL Shift)
  */
 void BuffChangeSelect(int Xw, int Yw, int NClick)
 {
+	BuffConfig cfg = getcfg();
 	int X, Y;
 	BOOL Right;
 
 	if (!Selecting) {
 		// 選択ガード?
-		if (GetTickCount() - SelectStartTime < ts.SelectStartDelay) {
+		if (GetTickCount() - SelectStartTime < cfg.SelectStartDelay) {
 			// ガード中
 			return;
 		}
@@ -4490,7 +4522,7 @@ void BuffChangeSelect(int Xw, int Yw, int NClick)
 			// ダブルクリック選択領域より前を選択
 			int dest_x;
 			int dest_y;
-			SearchDelimiterPrev(X, Y, ts.EnableContinuedLineCopy, &dest_x, &dest_y);
+			SearchDelimiterPrev(X, Y, cfg.EnableContinuedLineCopy, &dest_x, &dest_y);
 			SelectEnd.x = dest_x;
 			SelectEnd.y = dest_y;
 			SelectStart = DblClkEnd;
@@ -4499,7 +4531,7 @@ void BuffChangeSelect(int Xw, int Yw, int NClick)
 			// ダブルクリック選択領域より後ろを選択
 			int dest_x;
 			int dest_y;
-			SearchDelimiterNext(X - 1, Y, ts.EnableContinuedLineCopy, &dest_x, &dest_y);
+			SearchDelimiterNext(X - 1, Y, cfg.EnableContinuedLineCopy, &dest_x, &dest_y);
 			SelectEnd.x = dest_x + 1;
 			SelectEnd.y = dest_y;
 			SelectStart = DblClkStart;
@@ -4546,10 +4578,11 @@ void BuffChangeSelect(int Xw, int Yw, int NClick)
  */
 void BuffEndSelect(int Xw, int Yw)
 {
+	BuffConfig cfg = getcfg();
 	(void)Xw;
 	(void)Yw;
 	if (!Selecting) {
-		if (GetTickCount() - SelectStartTime < ts.SelectStartDelay) {
+		if (GetTickCount() - SelectStartTime < cfg.SelectStartDelay) {
 			// ガード時間以内なら
 			// 選択領域解除
 			SelectEnd = SelectStart;
@@ -4592,6 +4625,7 @@ void BuffChangeWinSize(int Nx, int Ny)
 //   Nx: new window width (number of characters)
 //   Ny: new window hight
 {
+	BuffConfig cfg = getcfg();
 	if (Nx==0) {
 		Nx = 1;
 	}
@@ -4599,7 +4633,7 @@ void BuffChangeWinSize(int Nx, int Ny)
 		Ny = 1;
 	}
 
-	if ((ts.TermIsWin>0) &&
+	if ((cfg.TermIsWin>0) &&
 	    ((Nx!=NumOfColumns) || (Ny!=NumOfLines))) {
 		LockBuffer();
 		BuffChangeTerminalSize(Nx,Ny-StatusLine);
@@ -4620,6 +4654,8 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 {
 	int i, Nb, W, H;
 	BOOL St;
+	BuffConfig cfg = getcfg();
+	LONG scroll_buff_max = cfg.ScrollBuffMax;
 
 	Ny = Ny + StatusLine;
 	if (Nx < 1) {
@@ -4631,34 +4667,35 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 	if (Nx > BuffXMax) {
 		Nx = BuffXMax;
 	}
-	if (ts.ScrollBuffMax > BuffYMax) {
-		ts.ScrollBuffMax = BuffYMax;
+	if (scroll_buff_max > BuffYMax) {
+		scroll_buff_max = BuffYMax;
+		Op.SetScrollBuffMax(scroll_buff_max);
 	}
-	if (Ny > ts.ScrollBuffMax) {
-		Ny = ts.ScrollBuffMax;
+	if (Ny > scroll_buff_max) {
+		Ny = scroll_buff_max;
 	}
 
 	St = isCursorOnStatusLine;
 	if ((Nx!=NumOfColumns) || (Ny!=NumOfLines)) {
-		if ((ts.ScrollBuffSize < Ny) ||
-		    (ts.EnableScrollBuff==0)) {
+		if ((cfg.ScrollBuffSize < Ny) ||
+		    (cfg.EnableScrollBuff==0)) {
 			Nb = Ny;
 		}
 		else {
-			Nb = ts.ScrollBuffSize;
+			Nb = cfg.ScrollBuffSize;
 		}
 
 		if (! ChangeBuffer(Nx,Nb)) {
 			return;
 		}
-		if (ts.EnableScrollBuff>0) {
-			ts.ScrollBuffSize = NumOfLinesInBuff;
+		if (cfg.EnableScrollBuff>0) {
+			Op.SetScrollBuffSize(NumOfLinesInBuff);
 		}
 		if (Ny > NumOfLinesInBuff) {
 			Ny = NumOfLinesInBuff;
 		}
 
-		if ((ts.TermFlag & TF_CLEARONRESIZE) == 0 && Ny != NumOfLines) {
+		if ((cfg.TermFlag & TF_CLEARONRESIZE) == 0 && Ny != NumOfLines) {
 			if (Ny > NumOfLines) {
 				CursorY += Ny - NumOfLines;
 				if (Ny > BuffEnd) {
@@ -4679,18 +4716,18 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 
 		NumOfColumns = Nx;
 		NumOfLines = Ny;
-		ts.TerminalWidth = Nx;
-		ts.TerminalHeight = Ny-StatusLine;
+		Op.SetTerminalWidth(Nx);
+		Op.SetTerminalHeight(Ny-StatusLine);
 
 		PageStart = BuffEnd - NumOfLines;
 	}
 
-	if (ts.TermFlag & TF_CLEARONRESIZE) {
+	if (cfg.TermFlag & TF_CLEARONRESIZE) {
 		BuffScroll(NumOfLines,NumOfLines-1);
 	}
 
 	/* Set Cursor */
-	if (ts.TermFlag & TF_CLEARONRESIZE) {
+	if (cfg.TermFlag & TF_CLEARONRESIZE) {
 		CursorX = 0;
 		CursorRightM = NumOfColumns-1;
 		if (St) {
@@ -4735,18 +4772,18 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 		TabStops[i-1] = i*8;
 	}
 
-	if (ts.TermIsWin>0) {
+	if (cfg.TermIsWin>0) {
 		W = NumOfColumns;
 		H = NumOfLines;
 	}
 	else {
 		W = WinWidth;
 		H = WinHeight;
-		if ((ts.AutoWinResize>0) ||
+		if ((cfg.AutoWinResize>0) ||
 		    (NumOfColumns < W)) {
 			W = NumOfColumns;
 		}
-		if (ts.AutoWinResize>0) {
+		if (cfg.AutoWinResize>0) {
 			H = NumOfLines;
 		}
 		else if (BuffEnd < H) {
@@ -4762,23 +4799,22 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 
 	DispScrollHomePos(vt_src);
 
-	if (cv.Ready && cv.TelFlag) {
-		TelInformWinSize(NumOfColumns,NumOfLines-StatusLine);
-	}
-
-	TTXSetWinSize(NumOfLines-StatusLine, NumOfColumns); /* TTPLUG */
+	Op.NotifyWinSize(NumOfColumns, NumOfLines-StatusLine);
 }
 
 void ChangeWin(void)
 {
 	int Ny;
+	BuffConfig cfg = getcfg();
 
 	/* Change buffer */
-	if (ts.EnableScrollBuff>0) {
-		if (ts.ScrollBuffSize < NumOfLines) {
-			ts.ScrollBuffSize = NumOfLines;
+	if (cfg.EnableScrollBuff>0) {
+		LONG scroll_buff_size = cfg.ScrollBuffSize;
+		if (scroll_buff_size < NumOfLines) {
+			scroll_buff_size = NumOfLines;
+			Op.SetScrollBuffSize(scroll_buff_size);
 		}
-		Ny = ts.ScrollBuffSize;
+		Ny = scroll_buff_size;
 	}
 	else {
 		Ny = NumOfLines;
@@ -4786,8 +4822,8 @@ void ChangeWin(void)
 
 	if (NumOfLinesInBuff!=Ny) {
 		ChangeBuffer(NumOfColumns,Ny);
-		if (ts.EnableScrollBuff>0) {
-			ts.ScrollBuffSize = NumOfLinesInBuff;
+		if (cfg.EnableScrollBuff>0) {
+			Op.SetScrollBuffSize(NumOfLinesInBuff);
 		}
 
 		if (BuffEnd < WinHeight) {
@@ -4865,6 +4901,7 @@ void SetTabStop(void)
 }
 
 void CursorForwardTab(int count, BOOL AutoWrapMode) {
+	BuffConfig cfg = getcfg();
 	int i, LineEnd;
 	BOOL WrapState;
 
@@ -4885,7 +4922,7 @@ void CursorForwardTab(int count, BOOL AutoWrapMode) {
 	}
 	else {
 		MoveCursor(LineEnd, CursorY);
-		if (!ts.VTCompatTab) {
+		if (!cfg.VTCompatTab) {
 			Wrap = AutoWrapMode;
 		}
 		else {
@@ -4918,12 +4955,13 @@ void ClearTabStop(int Ps)
 //   Ps = 0: clear the tab stop at cursor
 //      = 3: clear all tab stops
 {
+	BuffConfig cfg = getcfg();
 	int i,j;
 
 	if (NTabStops>0) {
 		switch (Ps) {
 		case 0:
-			if (ts.TabStopFlag & TABF_TBC0) {
+			if (cfg.TabStopFlag & TABF_TBC0) {
 				i = 0;
 				while ((TabStops[i]!=CursorX) && (i<NTabStops-1)) {
 					i++;
@@ -4937,7 +4975,7 @@ void ClearTabStop(int Ps)
 			}
 			break;
 		case 3:
-			if (ts.TabStopFlag & TABF_TBC3)
+			if (cfg.TabStopFlag & TABF_TBC3)
 				NTabStops = 0;
 			break;
 		}
@@ -4948,6 +4986,7 @@ void ShowStatusLine(int Show)
 // show/hide status line
 {
 	int Ny, Nb, W, H;
+	BuffConfig cfg = getcfg();
 
 	BuffUpdateScroll();
 	if (Show==StatusLine) {
@@ -4965,46 +5004,46 @@ void ShowStatusLine(int Show)
 		Ny = NumOfLines;
 	}
 	else {
-		Ny = ts.TerminalHeight+1;
+		Ny = cfg.TerminalHeight+1;
 	}
 
-	if ((ts.ScrollBuffSize < Ny) ||
-	    (ts.EnableScrollBuff==0)) {
+	if ((cfg.ScrollBuffSize < Ny) ||
+	    (cfg.EnableScrollBuff==0)) {
 		Nb = Ny;
 	}
 	else {
-		Nb = ts.ScrollBuffSize;
+		Nb = cfg.ScrollBuffSize;
 	}
 
 	if (! ChangeBuffer(NumOfColumns,Nb)) {
 		return;
 	}
-	if (ts.EnableScrollBuff>0) {
-		ts.ScrollBuffSize = NumOfLinesInBuff;
+	if (cfg.EnableScrollBuff>0) {
+		Op.SetScrollBuffSize(NumOfLinesInBuff);
 	}
 	if (Ny > NumOfLinesInBuff) {
 		Ny = NumOfLinesInBuff;
 	}
 
 	NumOfLines = Ny;
-	ts.TerminalHeight = Ny-StatusLine;
+	Op.SetTerminalHeight(Ny-StatusLine);
 
 	if (StatusLine==1) {
 		BuffScroll(1,NumOfLines-1);
 	}
 
-	if (ts.TermIsWin>0) {
+	if (cfg.TermIsWin>0) {
 		W = NumOfColumns;
 		H = NumOfLines;
 	}
 	else {
 		W = WinWidth;
 		H = WinHeight;
-		if ((ts.AutoWinResize>0) ||
+		if ((cfg.AutoWinResize>0) ||
 		    (NumOfColumns < W)) {
 			W = NumOfColumns;
 		}
-		if (ts.AutoWinResize>0) {
+		if (cfg.AutoWinResize>0) {
 			H = NumOfLines;
 		}
 		else if (BuffEnd < H) {
@@ -5025,8 +5064,9 @@ void ShowStatusLine(int Show)
 
 void BuffLineContinued(BOOL mode)
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t* CodeLineW = &CodeBuffW[LinePtr];
-	if (ts.EnableContinuedLineCopy) {
+	if (cfg.EnableContinuedLineCopy) {
 		if (mode) {
 			CodeLineW[0].attr |= AttrLineContinued;
 		} else {
@@ -5121,6 +5161,7 @@ void BuffDiscardSavedScreen(void)
 void BuffSelectedEraseCurToEnd(void)
 // Erase characters from cursor to the end of screen
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t* CodeLineW = &CodeBuffW[LinePtr];
 	LONG TmpPtr;
 	int offset;
@@ -5128,11 +5169,11 @@ void BuffSelectedEraseCurToEnd(void)
 
 	NewLine(PageStart+CursorY);
 
-	if (ts.KanjiCode == IdSJIS ||
-		ts.KanjiCode == IdEUC ||
-		ts.KanjiCode == IdJIS ||
-		ts.KanjiCode == IdKoreanCP949 ||
-		ts.KanjiCode == IdUTF8) {
+	if (cfg.KanjiCode == IdSJIS ||
+		cfg.KanjiCode == IdEUC ||
+		cfg.KanjiCode == IdJIS ||
+		cfg.KanjiCode == IdKoreanCP949 ||
+		cfg.KanjiCode == IdUTF8) {
 		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(1); /* if cursor is on right half of a kanji, erase the kanji */
 		}
@@ -5160,17 +5201,18 @@ void BuffSelectedEraseCurToEnd(void)
 void BuffSelectedEraseHomeToCur(void)
 // Erase characters from home to cursor
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t* CodeLineW = &CodeBuffW[LinePtr];
 	LONG TmpPtr;
 	int offset;
 	int i, j, YHome;
 
 	NewLine(PageStart+CursorY);
-	if (ts.KanjiCode == IdSJIS ||
-		ts.KanjiCode == IdEUC ||
-		ts.KanjiCode == IdJIS ||
-		ts.KanjiCode == IdKoreanCP949 ||
-		ts.KanjiCode == IdUTF8) {
+	if (cfg.KanjiCode == IdSJIS ||
+		cfg.KanjiCode == IdEUC ||
+		cfg.KanjiCode == IdJIS ||
+		cfg.KanjiCode == IdKoreanCP949 ||
+		cfg.KanjiCode == IdUTF8) {
 		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(0); /* if cursor is on left half of a kanji, erase the kanji */
 		}
@@ -5253,19 +5295,20 @@ void BuffSelectedEraseCharsInLine(int XStart, int Count)
 //  XStart: start position of erasing
 //  Count: number of characters to be erased
 {
+	BuffConfig cfg = getcfg();
 	buff_char_t * CodeLineW = &CodeBuffW[LinePtr];
 	int i;
 	BOOL LineContinued=FALSE;
 
-	if (ts.EnableContinuedLineCopy && XStart == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
+	if (cfg.EnableContinuedLineCopy && XStart == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
 		LineContinued = TRUE;
 	}
 
-	if (ts.KanjiCode == IdSJIS ||
-		ts.KanjiCode == IdEUC ||
-		ts.KanjiCode == IdJIS ||
-		ts.KanjiCode == IdKoreanCP949 ||
-		ts.KanjiCode == IdUTF8) {
+	if (cfg.KanjiCode == IdSJIS ||
+		cfg.KanjiCode == IdEUC ||
+		cfg.KanjiCode == IdJIS ||
+		cfg.KanjiCode == IdKoreanCP949 ||
+		cfg.KanjiCode == IdUTF8) {
 		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(1); /* if cursor is on right half of a kanji, erase the kanji */
 		}
@@ -5279,7 +5322,7 @@ void BuffSelectedEraseCharsInLine(int XStart, int Count)
 		}
 	}
 
-	if (ts.EnableContinuedLineCopy) {
+	if (cfg.EnableContinuedLineCopy) {
 		if (LineContinued) {
 			BuffLineContinued(TRUE);
 		}
