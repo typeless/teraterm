@@ -417,6 +417,7 @@
     <ClCompile Include="addsetting.cpp" />
     <ClCompile Include="broadcast.cpp" />
     <ClCompile Include="buffer.c" />
+    <ClCompile Include="buffcell.c" />
     <ClCompile Include="charset.cpp" />
     <ClCompile Include="checkeol.cpp" />
     <ClCompile Include="clipboar.c" />
@@ -594,6 +595,7 @@
     <ClInclude Include="..\common\tttypes.h" />
     <ClInclude Include="addsetting.h" />
     <ClInclude Include="buffer.h" />
+    <ClInclude Include="buffcell.h" />
     <ClInclude Include="clipboar.h" />
     <ClInclude Include="commlib.h" />
     <ClInclude Include="dnddlg.h" />

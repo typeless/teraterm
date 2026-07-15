@@ -47,37 +47,10 @@
 #include "codeconv.h"
 #include "unicode.h"
 #include "buffer.h"
+#include "buffcell.h"
 #include "asprintf.h"
 #include "ttcstd.h"
 #include "vtdraw.h"
-
-#define	ENABLE_CELL_INDEX	0
-
-// バッファ内の半角1文字分の情報
-typedef struct {
-	char32_t u32;
-	char32_t u32_last;
-	char WidthProperty;				// 'W' or 'F' or 'H' or 'A' or 'n'(Narrow) or 'N'(Neutual) (文字の属性)
-	char cell;			// 文字のcell数 1/2/3+=半角,全角,3以上
-						// 2以上のとき、この文字の後ろにpaddingがcell-1個続く
-	char Padding;					// TRUE = 全角の次の詰め物 or 行末の詰め物
-	char Emoji;						// TRUE = 絵文字
-	unsigned char CombinationCharCount16;	// character count
-	unsigned char CombinationCharSize16;		// buffer size
-	unsigned char CombinationCharCount32;
-	unsigned char CombinationCharSize32;
-	wchar_t *pCombinationChars16;
-	char32_t *pCombinationChars32;
-	wchar_t	wc2[2];
-	unsigned char fg;
-	unsigned char bg;
-	unsigned char attr;
-	unsigned char attr2;
-	unsigned short ansi_char;
-#if ENABLE_CELL_INDEX
-	int idx;	// セル通し番号
-#endif
-} buff_char_t;
 
 #define BuffXMax TermWidthMax
 //#define BuffYMax 100000
@@ -85,9 +58,6 @@ typedef struct {
 // スクロールバッファの最大長を拡張 (2004.11.28 yutaka)
 #define BuffYMax 500000
 #define BuffSizeMax (BuffYMax * 80)
-
-// 1文字あたりのコンビネーションバッファ最大サイズ
-#define MAX_CHAR_SIZE	100
 
 // status line
 int StatusLine;	//0: none 1: shown
@@ -137,279 +107,36 @@ vtdraw_t *vt_src;
 static void BuffDrawLineI(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd);
 static void ChangeSelectRegion(void);
 
-/**
- *	buff_char_t を relセル移動する
- *
- *	@param	CodeBuffW_	文字バッファの先頭ポインタ
- *	@param	BufferSize_	文字バッファのサイズ(buff_char_t単位)
- *	@param	p			移動させるポインタ
- *	@param	rel			移動量
- *	@retval	移動後のポインタ
- */
-static buff_char_t *GetPtrRel(buff_char_t *CodeBuffW_, size_t BufferSize_, buff_char_t *p, int rel)
+static size_t cell_to_mb(char32_t u32, void *ctx, char *mb_ptr, size_t mb_len)
 {
-	ptrdiff_t idx = (ptrdiff_t)(p - CodeBuffW_) + rel;
-	for (;;) {
-		if (idx < 0) {
-			idx += BufferSize_;
-		}
-		else if (idx >= (ptrdiff_t)BufferSize_) {
-			idx -= BufferSize_;
-		}
-		else {
-			break;
-		}
+	int code_page = *(int *)ctx;
+	if (u32 == 0x203e && code_page == 932) {
+		// U+203e OVERLINE 特別処理
+		//	 U+203eは0x7e'~'に変換
+		mb_ptr[0] = 0x7e;
+		return 1;
 	}
-	p = &CodeBuffW_[(int)idx];
-	return p;
-}
-
-static void FreeCombinationBuf(buff_char_t *b)
-{
-	if (b->pCombinationChars16 != NULL) {
-		free(b->pCombinationChars16);
-		b->pCombinationChars16 = NULL;
-	}
-	b->CombinationCharSize16 = 0;
-	b->CombinationCharCount16 = 0;
-
-	if (b->pCombinationChars32 != NULL) {
-		free(b->pCombinationChars32);
-		b->pCombinationChars32 = NULL;
-	}
-	b->CombinationCharSize32 = 0;
-	b->CombinationCharCount32 = 0;
-}
-
-static void DupCombinationBuf(buff_char_t *b)
-{
-	size_t size;
-
-	size = b->CombinationCharSize16;
-	if (size > 0) {
-		wchar_t *new_buf = malloc(sizeof(wchar_t) * size);
-		memcpy(new_buf, b->pCombinationChars16, sizeof(wchar_t) * size);
-		b->pCombinationChars16 = new_buf;
-	}
-	size = b->CombinationCharSize32;
-	if (size > 0) {
-		char32_t *new_buf = malloc(sizeof(char32_t) * size);
-		memcpy(new_buf, b->pCombinationChars32, sizeof(char32_t) * size);
-		b->pCombinationChars32 = new_buf;
-	}
-}
-
-static void CopyCombinationBuf(buff_char_t *dest, const buff_char_t *src)
-{
-	FreeCombinationBuf(dest);
-
-	// 構造体をコピーする
-#if ENABLE_CELL_INDEX
-	int idx = dest->idx;
-#endif
-	*dest = *src;
-#if ENABLE_CELL_INDEX
-	dest->idx = idx;
-#endif
-
-	DupCombinationBuf(dest);
+	return UTF32ToMBCP(u32, code_page, mb_ptr, mb_len);
 }
 
 static void BuffSetChar2(buff_char_t *buff, char32_t u32, char property, BOOL half_width, char emoji)
 {
-	size_t wstr_len;
-	buff_char_t *p = buff;
-
-	FreeCombinationBuf(p);
-	p->WidthProperty = property;
-	p->cell = half_width ? 1 : 2;
-	p->u32 = u32;
-	p->u32_last = u32;
-	p->Padding = FALSE;
-	p->Emoji = emoji;
-	p->fg = AttrDefaultFG;
-	p->bg = AttrDefaultBG;
-
-	//
-	wstr_len = UTF32ToUTF16(u32, &p->wc2[0], 2);
-	switch (wstr_len) {
-	case 0:
-	default:
-		p->wc2[0] = 0;
-		p->wc2[1] = 0;
-		break;
-	case 1:
-		p->wc2[1] = 0;
-		break;
-	case 2:
-		break;
-	}
-
-	if (u32 < 0x80) {
-		p->ansi_char = (unsigned short)u32;
-	}
-	else {
-		if (u32 == 0x203e && CodePage == 932) {
-			// U+203e OVERLINE 特別処理
-			//	 U+203eは0x7e'~'に変換
-			//p->ansi_char = 0x7e7e;
-			p->ansi_char = 0x7e;
-		}
-		else {
-			char strA[4];
-			size_t lenA = UTF32ToMBCP(u32, CodePage, strA, sizeof(strA));
-			switch (lenA) {
-			case 0:
-			default:
-				p->ansi_char = '?';
-				break;
-			case 1:
-				p->ansi_char = (unsigned char)strA[0];
-				break;
-			case 2:
-				p->ansi_char = (unsigned char)strA[1] | ((unsigned char)strA[0] << 8);
-				break;
-			}
-		}
-	}
+	CellSetChar2(buff, u32, property, half_width, emoji, cell_to_mb, &CodePage);
 }
 
 static void BuffSetChar4(buff_char_t *buff, char32_t u32, unsigned char fg, unsigned char bg, unsigned char attr, unsigned char attr2, char property)
 {
-	buff_char_t *p = buff;
-	BuffSetChar2(p, u32, property, TRUE, FALSE);
-	p->fg = fg;
-	p->bg = bg;
-	p->attr = attr;
-	p->attr2 = attr2;
+	CellSetChar4(buff, u32, fg, bg, attr, attr2, property, cell_to_mb, &CodePage);
 }
 
 static void BuffSetChar(buff_char_t *buff, char32_t u32, char property)
 {
-	BuffSetChar2(buff, u32, property, TRUE, FALSE);
-}
-
-/**
- *	文字の追加、コンビネーション
- */
-static void BuffAddChar(buff_char_t *buff, char32_t u32)
-{
-	buff_char_t *p = buff;
-	assert(p->u32 != 0);
-	// 後に続く文字領域を拡大する
-	if (p->CombinationCharSize16 < p->CombinationCharCount16 + 2) {
-		size_t new_size = p->CombinationCharSize16;
-		new_size = new_size == 0 ? 5 : new_size * 2;
-		if (new_size > MAX_CHAR_SIZE) {
-			new_size = MAX_CHAR_SIZE;
-		}
-		if (p->CombinationCharSize16 != new_size) {
-			p->pCombinationChars16 = realloc(p->pCombinationChars16, sizeof(wchar_t) * new_size);
-			p->CombinationCharSize16 = (char)new_size;
-		}
-	}
-	if (p->CombinationCharSize32 < p->CombinationCharCount32 + 2) {
-		size_t new_size = p->CombinationCharSize32;
-		new_size = new_size == 0 ? 5 : new_size * 2;
-		if (new_size > MAX_CHAR_SIZE) {
-			new_size = MAX_CHAR_SIZE;
-		}
-		if (p->CombinationCharSize32 != new_size) {
-			p->pCombinationChars32 = realloc(p->pCombinationChars32, sizeof(char32_t) * new_size);
-			p->CombinationCharSize32 = (char)new_size;
-		}
-	}
-
-	// UTF-32
-	if (p->CombinationCharCount32 < p->CombinationCharSize32) {
-		p->u32_last = u32;
-		p->pCombinationChars32[(size_t)p->CombinationCharCount32] = u32;
-		p->CombinationCharCount32++;
-	}
-
-	// UTF-16
-	if (p->CombinationCharCount16 < p->CombinationCharSize16) {
-		wchar_t u16_str[2];
-		size_t wlen = UTF32ToUTF16(u32, &u16_str[0], 2);
-		if (p->CombinationCharCount16 + wlen <= p->CombinationCharSize16) {
-			size_t i = (size_t)p->CombinationCharCount16;
-			p->pCombinationChars16[i] = u16_str[0];
-			if (wlen == 2) {
-				i++;
-				p->pCombinationChars16[i] = u16_str[1];
-			}
-			p->CombinationCharCount16 += (unsigned char)wlen;
-		}
-	}
-}
-
-static void memcpyW(buff_char_t *dest, const buff_char_t *src, size_t count)
-{
-	size_t i;
-
-	if (dest == src || count == 0) {
-		return;
-	}
-
-	for (i = 0; i < count; i++) {
-		CopyCombinationBuf(dest, src);
-		dest++;
-		src++;
-	}
+	CellSetChar(buff, u32, property, cell_to_mb, &CodePage);
 }
 
 static void memsetW(buff_char_t *dest, wchar_t ch, unsigned char fg, unsigned char bg, unsigned char attr, unsigned char attr2, size_t count)
 {
-	size_t i;
-	for (i=0; i<count; i++) {
-		BuffSetChar(dest, ch, 'H');
-		dest->fg = fg;
-		dest->bg = bg;
-		dest->attr = attr;
-		dest->attr2 = attr2;
-		dest++;
-	}
-}
-
-static void memmoveW(buff_char_t *dest, const buff_char_t *src, size_t count)
-{
-	size_t i;
-
-	if (dest == src || count == 0) {
-		return;
-	}
-
-
-	if (dest < src) {
-		// 前からコピーする? -> memcpyW() でok
-		memcpyW(dest, src, count);
-	}
-	else {
-		// 後ろからコピーする
-		dest += count - 1;
-		src += count - 1;
-		for (i = 0; i < count; i++) {
-			CopyCombinationBuf(dest, src);
-			dest--;
-			src--;
-		}
-	}
-}
-
-static BOOL IsBuffPadding(const buff_char_t *b)
-{
-	if (b->Padding == TRUE)
-		return TRUE;
-	if (b->u32 == 0)
-		return TRUE;
-	return FALSE;
-}
-
-static BOOL IsBuffFullWidth(const buff_char_t *b)
-{
-	if (b->cell != 1)
-		return TRUE;
-	return FALSE;
+	CellsFill(dest, ch, fg, bg, attr, attr2, count, cell_to_mb, &CodePage);
 }
 
 static LONG GetLinePtr(int Line)
@@ -553,7 +280,7 @@ static BOOL ChangeBuffer(int Nx, int Ny)
 		SrcPtr = GetLinePtr(BuffEnd-NyCopy);
 		DestPtr = 0;
 		for (i = 1 ; i <= NyCopy ; i++) {
-			memcpyW(&CodeDestW[DestPtr],&CodeBuffW[SrcPtr],NxCopy);
+			CellsCopy(&CodeDestW[DestPtr],&CodeBuffW[SrcPtr],NxCopy);
 			if (CodeDestW[DestPtr+NxCopy-1].attr & AttrKanji) {
 				BuffSetChar(&CodeDestW[DestPtr + NxCopy - 1], ' ', 'H');
 				CodeDestW[DestPtr+NxCopy-1].attr ^= AttrKanji;
@@ -690,7 +417,7 @@ void FreeBuffer(void)
 	int i;
 
 	for (i = 0; i < NumOfColumns * NumOfLinesInBuff; i++) {
-		FreeCombinationBuf(&CodeBuffW[i]);
+		CellFreeCombination(&CodeBuffW[i]);
 	}
 
 	BuffLock = 1;
@@ -792,7 +519,7 @@ static void BuffScroll(int Count, int Bottom)
 	if (Bottom<NumOfLines-1) {
 		SrcPtr = GetLinePtr(PageStart+NumOfLines-1);
 		for (i=NumOfLines-1; i>=Bottom+1; i--) {
-			memcpyW(&(CodeBuffW[DestPtr]),&(CodeBuffW[SrcPtr]),NumOfColumns);
+			CellsCopy(&(CodeBuffW[DestPtr]),&(CodeBuffW[SrcPtr]),NumOfColumns);
 			memsetW(&(CodeBuffW[SrcPtr]),0x20,CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, NumOfColumns);
 			SrcPtr = PrevLinePtr(SrcPtr);
 			DestPtr = PrevLinePtr(DestPtr);
@@ -860,7 +587,7 @@ static int EraseKanji(int LR)
 	}
 	bx = CursorX-LR;
 	p = &CodeLineW[bx];
-	if (IsBuffFullWidth(p)) {
+	if (CellIsFullWidth(p)) {
 		// 全角をつぶす
 		BuffSetChar(p, ' ', 'H');
 		p->attr = CurCharAttr.Attr;
@@ -928,7 +655,7 @@ void BuffInsertSpace(int Count)
 
 	sx = CursorX;
 	b = &CodeLineW[CursorX];
-	if (IsBuffPadding(b)) {
+	if (CellIsPadding(b)) {
 		/* if cursor is on right half of a kanji, erase the kanji */
 		BuffSetChar(b - 1, ' ', 'H');
 		BuffSetChar(b, ' ', 'H');
@@ -949,7 +676,7 @@ void BuffInsertSpace(int Count)
 	MoveLen = CursorRightM + 1 - CursorX - Count;
 
 	if (MoveLen > 0) {
-		memmoveW(&(CodeLineW[CursorX + Count]), &(CodeLineW[CursorX]), MoveLen);
+		CellsMove(&(CodeLineW[CursorX + Count]), &(CodeLineW[CursorX]), MoveLen);
 	}
 	memsetW(&(CodeLineW[CursorX]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2, Count);
 	/* last char in current line is kanji first? */
@@ -1065,7 +792,7 @@ void BuffInsertLines(int Count, int YEnd)
 	DestPtr = GetLinePtr(PageStart+YEnd) + CursorLeftM;
 	linelen = CursorRightM - CursorLeftM + 1;
 	for (i= YEnd-Count ; i>=CursorY ; i--) {
-		memcpyW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+		CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 		SrcPtr = PrevLinePtr(SrcPtr);
 		DestPtr = PrevLinePtr(DestPtr);
 	}
@@ -1156,7 +883,7 @@ void BuffDeleteLines(int Count, int YEnd)
 	DestPtr = GetLinePtr(PageStart+CursorY) + (LONG)CursorLeftM;
 	linelen = CursorRightM - CursorLeftM + 1;
 	for (i=CursorY ; i<= YEnd-Count ; i++) {
-		memcpyW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+		CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 		SrcPtr = NextLinePtr(SrcPtr);
 		DestPtr = NextLinePtr(DestPtr);
 	}
@@ -1189,19 +916,19 @@ void BuffDeleteChars(int Count)
 
 	b = &CodeLineW[CursorX];
 
-	if (IsBuffPadding(b)) {
+	if (CellIsPadding(b)) {
 		// 全角の右側、全角をスペースに置き換える
 		BuffSetChar(b - 1, ' ', 'H');
 		BuffSetChar(b, ' ', 'H');
 	}
-	if (IsBuffFullWidth(b)) {
+	if (CellIsFullWidth(b)) {
 		// 全角の左側、全角をスペースに置き換える
 		BuffSetChar(b, ' ', 'H');
 		BuffSetChar(b + 1, ' ', 'H');
 	}
 	if (Count > 1) {
 		// 終端をチェック
-		if (IsBuffPadding(b + Count)) {
+		if (CellIsPadding(b + Count)) {
 			// 全角の右側、全角をスペースに置き換える
 			BuffSetChar(b + Count - 1, ' ', 'H');
 			BuffSetChar(b + Count, ' ', 'H');
@@ -1219,7 +946,7 @@ void BuffDeleteChars(int Count)
 	MoveLen = CursorRightM + 1 - CursorX - Count;
 
 	if (MoveLen > 0) {
-		memmoveW(&(CodeLineW[CursorX]), &(CodeLineW[CursorX + Count]), MoveLen);
+		CellsMove(&(CodeLineW[CursorX]), &(CodeLineW[CursorX + Count]), MoveLen);
 	}
 	memsetW(&(CodeLineW[CursorX + MoveLen]), ' ', CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, Count);
 
@@ -1427,7 +1154,7 @@ void BuffCopyBox(
 		SPtr = GetLinePtr(PageStart+SrcYStart);
 		DPtr = GetLinePtr(PageStart+DstY);
 		for (i=0; i<L; i++) {
-			memcpyW(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
+			CellsCopy(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = NextLinePtr(SPtr);
 			DPtr = NextLinePtr(DPtr);
 		}
@@ -1436,7 +1163,7 @@ void BuffCopyBox(
 		SPtr = GetLinePtr(PageStart+SrcYEnd);
 		DPtr = GetLinePtr(PageStart+DstY+L-1);
 		for (i=L; i>0; i--) {
-			memcpyW(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
+			CellsCopy(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = PrevLinePtr(SPtr);
 			DPtr = PrevLinePtr(DPtr);
 		}
@@ -1445,7 +1172,7 @@ void BuffCopyBox(
 		SPtr = GetLinePtr(PageStart+SrcYStart);
 		DPtr = GetLinePtr(PageStart+DstY);
 		for (i=0; i<L; i++) {
-			memmoveW(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
+			CellsMove(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = NextLinePtr(SPtr);
 			DPtr = NextLinePtr(DPtr);
 		}
@@ -1920,73 +1647,6 @@ static wchar_t *BuffGetStringForCB(int sx, int sy, int ex, int ey, BOOL box_sele
 }
 
 /**
- *	1セル分をwchar_t文字列に展開する
- *	@param[in]		b			1セル分の文字情報へのポインタ
- *	@param[in,out]	buf			文字列展開先 NULLの場合は展開されない
- *	@param[in]		buf_size	bufの文字数(buff == NULLの場合は参照されない)
- *	@param[out]		too_small	NULL のとき情報を返さない
- *								TRUE	バッファサイズ不足
- *										戻り値は必要な文字数が返る
- *								FALSE	文字を展開できた
- *	@retrun			文字数		出力文字数
- *								0のとき、文字出力なし
- *
- *	TODO
- *		GetWCS() と同じ?
- */
-static size_t expand_wchar(const buff_char_t *b, wchar_t *buf, size_t buf_size, BOOL *too_samll)
-{
-	size_t len;
-
-	if (IsBuffPadding(b)) {
-		if (too_samll != NULL) {
-			*too_samll = FALSE;
-		}
-		return 0;
-	}
-
-	// 長さを測る
-	len = 0;
-	if (b->wc2[1] == 0) {
-		// サロゲートペアではない
-		len++;
-	} else {
-		// サロゲートペア
-		len += 2;
-	}
-	// コンビネーション
-	len += b->CombinationCharCount16;
-
-	if (buf == NULL) {
-		// 長さだけを返す
-		return len;
-	}
-
-	// バッファに収まる?
-	if (len > buf_size) {
-		// バッファに収まらない
-		if (too_samll != NULL) {
-			*too_samll = TRUE;
-		}
-		return len;
-	}
-	if (too_samll != NULL) {
-		*too_samll = FALSE;
-	}
-
-	// 展開していく
-	*buf++ = b->wc2[0];
-	if (b->wc2[1] != 0) {
-		*buf++ = b->wc2[1];
-	}
-	if (b->CombinationCharCount16 != 0) {
-		memcpy(buf, b->pCombinationChars16, b->CombinationCharCount16 * sizeof(wchar_t));
-	}
-
-	return len;
-}
-
-/**
  *	(x,y) の1文字が strと同一か調べる
  *		*注 1文字が複数のwchar_tから構成されている
  *
@@ -2075,7 +1735,7 @@ static BOOL MatchStringPtr(const buff_char_t *b, const wchar_t *str, BOOL LineCo
 	GetPosFromPtr(b, &x, &y);
 	for(;;) {
 		size_t match_len;
-		if (IsBuffPadding(b)) {
+		if (CellIsPadding(b)) {
 			b++;
 			continue;
 		}
@@ -2928,7 +2588,7 @@ static void mark_url_w(int cur_x, int cur_y)
  *	@retval			展開した文字列
  *
  *	TODO
- *		expand_wchar() と同じ?
+ *		CellExpandWchar() と同じ?
  */
 static wchar_t *GetWCS(const buff_char_t *b)
 {
@@ -2982,7 +2642,7 @@ static buff_char_t *IsCombiningChar(int x, int y, BOOL wrap, unsigned int u32, i
 	if (x == NumOfColumns - 1 && wrap) {
 		// 現在位置に結合する
 		p = &CodeLineW[x];
-		if (IsBuffPadding(p)){
+		if (CellIsPadding(p)){
 			p--;
 		}
 	}
@@ -2994,7 +2654,7 @@ static buff_char_t *IsCombiningChar(int x, int y, BOOL wrap, unsigned int u32, i
 		else {
 			// paddingではないセルを探す
 			x = LeftHalfOfDBCS(LinePtr_, x - 1);		// 1cell前から調べる
-			if (!IsBuffPadding(&CodeLineW[x])) {
+			if (!CellIsPadding(&CodeLineW[x])) {
 				p = &CodeLineW[x];
 			}
 			else {
@@ -3050,10 +2710,10 @@ static unsigned short ConvertACPChar(const buff_char_t *b)
 	size_t pool_lenW = 128;
 	wchar_t *strW = (wchar_t *)malloc(pool_lenW * sizeof(wchar_t));
 	BOOL too_small = FALSE;
-	size_t lenW = expand_wchar(b, strW, pool_lenW, &too_small);
+	size_t lenW = CellExpandWchar(b, strW, pool_lenW, &too_small);
 	if (too_small) {
 		strW = (wchar_t *)realloc(strW, lenW * sizeof(wchar_t));
-		expand_wchar(b, strW, lenW, &too_small);
+		CellExpandWchar(b, strW, lenW, &too_small);
 	}
 
 	if (lenW >= 2) {
@@ -3179,7 +2839,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		}
 
 		// 前の文字にくっつける
-		BuffAddChar(p, u32);
+		CellAddChar(p, u32);
 
 		// 文字描画
 		if (StrChangeCount == 0) {
@@ -3219,7 +2879,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 
 		p = &CodeLineW[CursorX];
 		// 現在の位置が全角の右側?
-		if (IsBuffPadding(p)) {
+		if (CellIsPadding(p)) {
 			// 全角の前半をスペースに置き換える
 			assert(CursorX > 0);  // 行頭に全角の右側はない
 			BuffSetChar(p - 1, ' ', 'H');
@@ -3239,7 +2899,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			}
 		}
 		// 現在の位置が全角の左側 && 入力文字が半角 ?
-		if (half_width && IsBuffFullWidth(p)) {
+		if (half_width && CellIsFullWidth(p)) {
 			// 行末に全角(2cell)以上の文字が存在する可能性がある
 			BuffSetChar(p, ' ', 'H');
 			if (CursorX < NumOfColumns - 1) {
@@ -3260,12 +2920,12 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		}
 
 		{
-			buff_char_t *p1 = GetPtrRel(CodeBuffW, BufferSize, p, 1);
+			buff_char_t *p1 = CellPtrRel(CodeBuffW, BufferSize, p, 1);
 
 			// 次の文字が全角 && 入力文字が全角 ?
-			if (!Insert && !half_width && IsBuffFullWidth(p1)) {
+			if (!Insert && !half_width && CellIsFullWidth(p1)) {
 				// 全角を潰す
-				buff_char_t *p2 = GetPtrRel(CodeBuffW, BufferSize, p1, 1);
+				buff_char_t *p2 = CellPtrRel(CodeBuffW, BufferSize, p1, 1);
 				BuffSetChar(p1, ' ', 'H');
 				BuffSetChar(p2, ' ', 'H');
 			}
@@ -3306,13 +2966,13 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			if (!half_width) {
 				MoveLen = LineEnd - CursorX - 1;
 				if (MoveLen > 0) {
-					memmoveW(&(CodeLineW[CursorX + 2]), &(CodeLineW[CursorX]), MoveLen);
+					CellsMove(&(CodeLineW[CursorX + 2]), &(CodeLineW[CursorX]), MoveLen);
 				}
 			}
 			else {
 				MoveLen = LineEnd - CursorX;
 				if (MoveLen > 0) {
-					memmoveW(&(CodeLineW[CursorX + 1]), &(CodeLineW[CursorX]), MoveLen);
+					CellsMove(&(CodeLineW[CursorX + 1]), &(CodeLineW[CursorX]), MoveLen);
 				}
 			}
 
@@ -3516,7 +3176,7 @@ void BuffGetDrawInfoW(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd,
 		if (count == 0) {
 			// 最初の1文字目
 			int ptr = TmpPtr + istart + count;
-			if (IsBuffPadding(b)) {
+			if (CellIsPadding(b)) {
 				// 最初に表示しようとした文字が2cellの右側だった場合
 				// assert(FALSE);
 				ptr--;
@@ -3529,7 +3189,7 @@ void BuffGetDrawInfoW(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd,
 			CurSelected = CheckSelect(istart+count,SY);
 		}
 
-		if (IsBuffPadding(b)) {
+		if (CellIsPadding(b)) {
 			// 2cellの次の文字,処理不要
 		} else {
 			if (count == 0) {
@@ -3837,7 +3497,7 @@ void ScrollUp1Line(void)
 		DestPtr = GetLinePtr(PageStart+CursorBottom) + CursorLeftM;
 		for (i = CursorBottom-1 ; i >= CursorTop ; i--) {
 			SrcPtr = PrevLinePtr(DestPtr);
-			memcpyW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+			CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 			DestPtr = SrcPtr;
 		}
 		memsetW(&(CodeBuffW[SrcPtr]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, linelen);
@@ -3900,7 +3560,7 @@ void BuffScrollNLines(int n)
 		if (n<CursorBottom-CursorTop+1) {
 			SrcPtr = GetLinePtr(PageStart+CursorTop+n) + (LONG)CursorLeftM;
 			for (i = CursorTop+n ; i<=CursorBottom ; i++) {
-				memmoveW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+				CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 				SrcPtr = NextLinePtr(SrcPtr);
 				DestPtr = NextLinePtr(DestPtr);
 			}
@@ -3953,7 +3613,7 @@ void BuffRegionScrollUpNLines(int n) {
 		if (n < CursorBottom - CursorTop + 1) {
 			SrcPtr = GetLinePtr(PageStart+CursorTop+n) + CursorLeftM;
 			for (i = CursorTop+n ; i<=CursorBottom ; i++) {
-				memmoveW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+				CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 				SrcPtr = NextLinePtr(SrcPtr);
 				DestPtr = NextLinePtr(DestPtr);
 			}
@@ -3997,7 +3657,7 @@ void BuffRegionScrollDownNLines(int n) {
 	if (n < CursorBottom - CursorTop + 1) {
 		SrcPtr = GetLinePtr(PageStart+CursorBottom-n) + CursorLeftM;
 		for (i=CursorBottom-n ; i>=CursorTop ; i--) {
-			memmoveW(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
+			CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 			SrcPtr = PrevLinePtr(SrcPtr);
 			DestPtr = PrevLinePtr(DestPtr);
 		}
@@ -5401,7 +5061,7 @@ void BuffSaveScreen(void)
 			DestPtr = 0;
 
 			for (i=0; i<NumOfLines; i++) {
-				memcpyW(&CodeDestW[DestPtr], &CodeBuffW[SrcPtr], NumOfColumns);
+				CellsCopy(&CodeDestW[DestPtr], &CodeBuffW[SrcPtr], NumOfColumns);
 				SrcPtr = NextLinePtr(SrcPtr);
 				DestPtr += NumOfColumns;
 			}
@@ -5427,7 +5087,7 @@ void BuffRestoreScreen(void)
 		DestPtr = GetLinePtr(PageStart);
 
 		for (i=0; i<CopyY; i++) {
-			memcpyW(&CodeBuffW[DestPtr], &CodeSrcW[SrcPtr], CopyX);
+			CellsCopy(&CodeBuffW[DestPtr], &CodeSrcW[SrcPtr], CopyX);
 			if (CodeBuffW[DestPtr+CopyX-1].attr & AttrKanji) {
 				BuffSetChar(&CodeBuffW[DestPtr+CopyX-1], 0x20, 'H');
 				CodeBuffW[DestPtr+CopyX-1].attr ^= AttrKanji;
@@ -5449,7 +5109,7 @@ void BuffDiscardSavedScreen(void)
 		buff_char_t *b = (buff_char_t *)SaveBuff;
 
 		for (i = 0; i < SaveBuffX * SaveBuffY; i++) {
-			FreeCombinationBuf(&b[i]);
+			CellFreeCombination(&b[i]);
 		}
 
 		free(SaveBuff);
@@ -5661,7 +5321,7 @@ void BuffScrollLeft(int count)
 			CodeBuffW[Ptr-1].attr &= ~AttrKanji;
 		}
 
-		memmoveW(&(CodeBuffW[Ptr]),   &(CodeBuffW[Ptr+count]),   MoveLen);
+		CellsMove(&(CodeBuffW[Ptr]),   &(CodeBuffW[Ptr+count]),   MoveLen);
 
 		memsetW(&(CodeBuffW[Ptr+MoveLen]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, count);
 
@@ -5693,7 +5353,7 @@ void BuffScrollRight(int count)
 			BuffSetChar(&CodeBuffW[Ptr], 0x20, 'H');
 		}
 
-		memmoveW(&(CodeBuffW[Ptr+count]),   &(CodeBuffW[Ptr]),   MoveLen);
+		CellsMove(&(CodeBuffW[Ptr+count]),   &(CodeBuffW[Ptr]),   MoveLen);
 
 		memsetW(&(CodeBuffW[Ptr]),   0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, count);
 
@@ -5747,7 +5407,7 @@ wchar_t *BuffGetLineStrW(int Sy, int *cx, size_t *lenght)
 				*cx = (int)total_len;
 			}
 		}
-		len = expand_wchar(b + x, NULL, 0, NULL);
+		len = CellExpandWchar(b + x, NULL, 0, NULL);
 		total_len += len;
 	}
 	total_len++;
@@ -5755,7 +5415,7 @@ wchar_t *BuffGetLineStrW(int Sy, int *cx, size_t *lenght)
 	idx = 0;
 	for(x = 0; x < NumOfColumns; x++) {
 		wchar_t *p = &result[idx];
-		size_t len = expand_wchar(b + x, p, total_len - idx, NULL);
+		size_t len = CellExpandWchar(b + x, p, total_len - idx, NULL);
 		idx += len;
 	}
 	result[idx] = 0;
@@ -5783,7 +5443,7 @@ int BuffGetAnyLineData(int offset_y, char *buf, int bufsize)
 	for (i = 0; i<copysize; i++) {
 		unsigned short c;
 		buff_char_t *b = &CodeBuffW[Ptr];
-		if (IsBuffPadding(b)) {
+		if (CellIsPadding(b)) {
 			continue;
 		}
 		c = b->ansi_char;
@@ -5829,10 +5489,10 @@ int BuffGetAnyLineDataW(int offset_y, wchar_t *buf, size_t bufsize)
 	for (i = 0; i<copysize; i++) {
 		BOOL too_small;
 		size_t len;
-		if (IsBuffPadding(b)) {
+		if (CellIsPadding(b)) {
 			continue;
 		}
-		len = expand_wchar(b, &buf[idx], left, &too_small);
+		len = CellExpandWchar(b, &buf[idx], left, &too_small);
 		if (too_small) {
 			break;
 		}
