@@ -92,6 +92,8 @@ add_executable(
   vtdraw.h
   vtterm.c
   vtterm.h
+  vtparams.c
+  vtparams.h
   vtwin.cpp
   vtwin.h
   winjump.c

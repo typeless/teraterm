@@ -105,6 +105,9 @@
     <ClCompile Include="vtterm.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
+    <ClCompile Include="vtparams.c">
+      <Filter>Source Files %28C%29</Filter>
+    </ClCompile>
     <ClCompile Include="winjump.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
@@ -505,6 +508,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vtterm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vtparams.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vtwin.h">
