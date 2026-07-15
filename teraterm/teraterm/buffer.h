@@ -72,7 +72,53 @@ typedef struct {
 
 typedef TCharAttr *PCharAttr;
 
-void InitBuffer(IdVtDrawAPI draw_api);
+// The subset of the terminal settings (ts) the scroll buffer reads. The owner
+// supplies these through BuffOp::GetConfig instead of buffer.c reaching into the
+// global settings, so buffer.c has no dependency on ttwinman/ts. The string
+// fields alias the owner's storage: a snapshot is taken at the point of use and
+// consumed immediately on the single UI thread, so the pointers stay valid for
+// the call.
+typedef struct {
+	WORD KanjiCode;
+	WORD EnableContinuedLineCopy;
+	WORD EnableScrollBuff;
+	WORD AutoWinResize;
+	WORD AutoScrollOnlyInBottomLine;
+	WORD TermIsWin;
+	WORD TermFlag;
+	WORD TabStopFlag;
+	WORD VTCompatTab;
+	WORD DelimDBCS;
+	BYTE UnicodeAmbiguousWidth;
+	BYTE UnicodeOverrideCharWidthEnable;
+	BYTE UnicodeEmojiOverride;
+	BYTE UnicodeEmojiWidth;
+	DWORD SelectStartDelay;
+	int EnableClickableUrl;
+	LONG ScrollBuffSize;
+	LONG ScrollBuffMax;
+	int TerminalWidth;
+	int TerminalHeight;
+	const wchar_t *DelimListW;
+	const char *ClickableUrlBrowser;
+	const char *ClickableUrlBrowserArg;
+} BuffConfig;
+
+// Owner-supplied operations that replace buffer.c's direct ts/cv access. The
+// four setters mirror buffer.c's derived values back to ts synchronously (they
+// feed ini-save and the setup dialogs, so a deferred mirror would be a silent
+// persistent-settings regression). NotifyWinSize replaces the cv-guarded telnet
+// window-size report plus the TTX plugin hook.
+typedef struct {
+	void (*GetConfig)(BuffConfig *out);
+	void (*SetScrollBuffSize)(LONG value);
+	void (*SetScrollBuffMax)(LONG value);
+	void (*SetTerminalWidth)(int value);
+	void (*SetTerminalHeight)(int value);
+	void (*NotifyWinSize)(int cols, int lines);
+} BuffOp;
+
+void InitBuffer(IdVtDrawAPI draw_api, const BuffOp *op);
 void LockBuffer(void);
 void UnlockBuffer(void);
 void FreeBuffer(void);

@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 SEALED="
 teraterm/teraterm/charset.cpp
+teraterm/teraterm/buffer.c
 "
 
 rc=0
