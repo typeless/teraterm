@@ -105,7 +105,7 @@
     <ClCompile Include="vtterm.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
-    <ClCompile Include="vtparams.c">
+    <ClCompile Include="vtparams.cpp">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
     <ClCompile Include="winjump.c">
