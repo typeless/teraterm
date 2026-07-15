@@ -14,6 +14,7 @@ srcs_cpp += ../ttpdlg/windlg.cpp
 srcs_cpp += ../ttpdlg/windowdlg.cpp
 srcs_cpp += ../ttpfile/filesys_win32.cpp
 srcs_cpp += ../ttpfile/protolog.cpp
+srcs_cpp += abi_check.cpp
 srcs_cpp += addsetting.cpp
 srcs_cpp += agent_server.cpp
 srcs_cpp += broadcast.cpp

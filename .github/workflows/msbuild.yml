@@ -1,8 +1,14 @@
 name: Build installer
 
+# Release-only. The clang-cl+xwin cross-build in putup.yml is the every-push
+# gate; this MSVC installer pipeline (x86/x64/arm64 installers, chm, lng) runs
+# only on version tags or manual dispatch. It stays the de-facto verifier that
+# the Tupfile / CMakeLists / *.vcxproj build descriptions remain in sync, so run
+# it by hand (workflow_dispatch) before merging any file add/rename.
 on:
   push:
-  pull_request:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
