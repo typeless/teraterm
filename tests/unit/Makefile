@@ -33,7 +33,7 @@ AGENT_H    := $(wildcard $(TT)/agent_*.h)
 # Legacy CHECK()-harness tests (C, self-contained). Kept running verbatim.
 AGENT_TESTS := agent_jsonrpc agent_mcp agent_shmem
 # Catch2 tests (C++), one binary each.
-CATCH_TESTS := codeconv telnet_neg buffcell
+CATCH_TESTS := codeconv telnet_neg buffcell vtparams
 
 ALL_TESTS := $(AGENT_TESTS) $(CATCH_TESTS)
 
@@ -89,6 +89,13 @@ $(B)/telnet_neg_impl.o: $(TT)/telnet_neg.c $(TT)/telnet_neg.h $(TT)/telnet_defs.
 	$(CC) $(CFLAGS) -I$(TT) -c $< -o $@
 
 $(B)/telnet_neg: test_telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h $(B)/telnet_neg_impl.o $(B)/catch_amalgamated.o | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
+
+# vtparams is pure C (no shim); compile it as C, link with the C++ test.
+$(B)/vtparams_impl.o: $(TT)/vtparams.c $(TT)/vtparams.h | $(B)
+	$(CC) $(CFLAGS) -I$(TT) -c $< -o $@
+
+$(B)/vtparams: test_vtparams.cpp $(TT)/vtparams.h $(B)/vtparams_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
 # buffcell.c is compiled as C++ on this lane: in C mode ttcstd.h typedefs
