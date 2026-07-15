@@ -33,7 +33,7 @@ AGENT_H    := $(wildcard $(TT)/agent_*.h)
 # Legacy CHECK()-harness tests (C, self-contained). Kept running verbatim.
 AGENT_TESTS := agent_jsonrpc agent_mcp agent_shmem
 # Catch2 tests (C++), one binary each.
-CATCH_TESTS := codeconv telnet_neg
+CATCH_TESTS := codeconv telnet_neg buffcell
 
 ALL_TESTS := $(AGENT_TESTS) $(CATCH_TESTS)
 
@@ -53,6 +53,10 @@ run-%: $(B)/%
 # the host; exclude them here (they run for real on the native ttunittest.exe).
 run-codeconv: $(B)/codeconv
 	@echo "== codeconv (host: excluding [win]) =="
+	@$< "~[win]"
+
+run-buffcell: $(B)/buffcell
+	@echo "== buffcell (host: excluding [win]) =="
 	@$< "~[win]"
 
 $(B):
@@ -86,6 +90,16 @@ $(B)/telnet_neg_impl.o: $(TT)/telnet_neg.c $(TT)/telnet_neg.h $(TT)/telnet_defs.
 
 $(B)/telnet_neg: test_telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h $(B)/telnet_neg_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
+
+# buffcell.c is compiled as C++ on this lane: in C mode ttcstd.h typedefs
+# char32_t as unsigned long (8 bytes on LP64), which would give the impl and
+# the C++ test different buff_char_t layouts. The native ttunittest lane
+# compiles it as genuine C, where the sizes agree.
+$(B)/buffcell_impl.o: $(TT)/buffcell.c $(TT)/buffcell.h $(CODECONV_H) | $(B)
+	$(CXX) $(CXXFLAGS) -x c++ -Iwinhost -I$(TT) -I$(COMMON) -c $< -o $@
+
+$(B)/buffcell: test_buffcell.cpp $(TT)/buffcell.h $(COMMON)/codeconv.cpp $(B)/buffcell_impl.o $(B)/winhost.o $(B)/catch_amalgamated.o $(CODECONV_H) | $(B)
+	$(CXX) $(CXXFLAGS) -Iwinhost -I$(TT) -I$(COMMON) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
 clean:
 	@rm -rf $(B)
