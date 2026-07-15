@@ -140,3 +140,23 @@ jobs:
           path: |
             build-win/**/*.exe
             build-win/**/*.dll
+
+  # Run the Catch2 unit tests on real Windows against the cross-built binary,
+  # including the [win]-tagged cases that exercise the genuine Win32 codepage
+  # conversions (stubbed on the Linux host lane). This is the "test on native
+  # Windows" gate; the build itself stays clang-cl+xwin on Linux.
+  test-windows:
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Download cross-built binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: teraterm-windows-x86_64
+      - name: Run unit tests (native Windows)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -Filter ttunittest.exe | Select-Object -First 1
+          if (-not $exe) { throw "ttunittest.exe not found in the artifact" }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

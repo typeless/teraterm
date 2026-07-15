@@ -25,8 +25,20 @@ Only **pure / protocol** logic belongs here. Core translation units that pull in
 the types, constants, and codepage entry points those files reference. The
 codepage functions are **stubs that abort if called** — anything whose behaviour
 depends on real `MultiByteToWideChar`/`WideCharToMultiByte`/`GetACP` must be a
-`[win]`-tagged test on the native-Windows lane (Lane B, `windows-latest`), not
-here. The shim grows only as new host-tested TUs need it.
+`[win]`-tagged test that runs on Lane B (below), not here. `make check` excludes
+`[win]` cases automatically. The shim grows only as new host-tested TUs need it.
+
+## Lane B — native Windows (`ttunittest.exe`)
+
+`Tupfile` builds the same Catch2 tests into `ttunittest.exe` via clang-cl+xwin,
+against the **real** `<windows.h>` (no shim), so `[win]`-tagged tests exercise
+the genuine codepage conversions. It is built by the normal `putup -B build-win`,
+run on the `windows-latest` CI lane (job `test-windows`), and locally under Wine:
+
+```sh
+wine build-win/tests/unit/ttunittest.exe          # all cases
+wine build-win/tests/unit/ttunittest.exe "[win]"  # just the native-only cases
+```
 
 ## Adding a test
 
