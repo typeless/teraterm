@@ -97,6 +97,7 @@ srcs_c += keyboard_pp.c
 srcs_c += sizetip.c
 srcs_c += telnet.c
 srcs_c += telnet_neg.c
+srcs_c += vtparams.c
 srcs_c += ttdde.c
 srcs_c += ttdialog.c
 srcs_c += ttfileio.c
