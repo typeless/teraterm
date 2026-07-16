@@ -19,6 +19,8 @@ srcs_cpp += test_buffcell.cpp
 srcs_cpp += $(S)/teraterm/teraterm/buffcell.cpp
 srcs_cpp += test_vtparams.cpp
 srcs_cpp += $(S)/teraterm/teraterm/vtparams.cpp
+srcs_cpp += test_titlestack.cpp
+srcs_cpp += $(S)/teraterm/teraterm/titlestack.cpp
 
 : foreach $(srcs_cpp) |> !cxx |> {objs}
 : foreach $(srcs_c) |> !cc |> {objs}

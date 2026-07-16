@@ -108,6 +108,9 @@
     <ClCompile Include="vtparams.cpp">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
+    <ClCompile Include="titlestack.cpp">
+      <Filter>Source Files %28C%29</Filter>
+    </ClCompile>
     <ClCompile Include="winjump.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
@@ -511,6 +514,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vtparams.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="titlestack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vtwin.h">

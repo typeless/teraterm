@@ -98,6 +98,7 @@ srcs_c += sizetip.c
 srcs_c += telnet.c
 srcs_cpp += telnet_neg.cpp
 srcs_cpp += vtparams.cpp
+srcs_cpp += titlestack.cpp
 srcs_c += ttdde.c
 srcs_c += ttdialog.c
 srcs_c += ttfileio.c
