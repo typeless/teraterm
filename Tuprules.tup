@@ -26,6 +26,13 @@ CXXFLAGS = @(CXXFLAGS)
 LDFLAGS = @(LDFLAGS)
 RCFLAGS = @(RCFLAGS)
 
+# Emit CodeView debug info (/Z7, embedded in the objects) and a PDB per binary
+# (/DEBUG). /DEBUG flips lld-link's /OPT default to NOREF/NOICF, so restore
+# dead-strip explicitly to keep the binaries the same size as a non-debug build.
+CFLAGS += /Z7
+CXXFLAGS += /Z7
+LDFLAGS += /DEBUG /OPT:REF /OPT:ICF
+
 # clang-cl + xwin: inject the xwin-splatted MSVC CRT + Windows SDK include/lib
 # paths. XWIN_SPLAT comes from the environment (host-specific, not committed).
 ifeq (@(XWIN),y)
