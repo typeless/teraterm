@@ -16,11 +16,13 @@ OUT="${2:?usage: stage_release.sh <build-dir> <out-dir>}"
 REL="installer/release"
 LNGDIR="$BUILD/installer/release/lang_utf8"
 
-rm -rf "$OUT"
-mkdir -p "$OUT" "$OUT/lang" "$OUT/lang_utf16le"
+rm -rf "$OUT" "${OUT}_pdb"
+mkdir -p "$OUT" "$OUT/lang" "$OUT/lang_utf16le" "${OUT}_pdb"
 
 # 1. Binaries: flatten build-win's mirrored tree by name. collect_files stages
-#    the full TTX sample set, not only teraterm.iss's shipped subset.
+#    the full TTX sample set, not only teraterm.iss's shipped subset. Each
+#    binary's PDB is collected under its original name (before the step-2 disable
+#    rename) into <OUT>_pdb/, the flat tree create_package zips into _pdb.zip.
 for b in ttermpro.exe ttpcmn.dll keycode.exe keycodeW.exe ttpmacro.exe ttxssh.dll \
          TTXProxy.dll ttxkanjimenu.dll cyglaunch.exe ttpmenu.exe \
          TTXAlwaysOnTop.dll TTXCallSysMenu.dll TTXCommandLineOpt.dll TTXCopyIniFile.dll \
@@ -28,7 +30,13 @@ for b in ttermpro.exe ttpcmn.dll keycode.exe keycodeW.exe ttpmacro.exe ttxssh.dl
          TTXResizeMenu.dll TTXResizeWin.dll TTXShowCommandLine.dll TTXViewMode.dll \
          TTXtest.dll TTXttyplay.dll TTXttyrec.dll TTXChangeFontSize.dll; do
   src=$(find "$BUILD" -name "$b" -type f | head -1)
-  if [ -n "$src" ]; then cp "$src" "$OUT/"; else echo "stage: WARNING $b not built"; fi
+  if [ -n "$src" ]; then
+    cp "$src" "$OUT/"
+    pdb=$(find "$BUILD" -name "${b%.*}.pdb" -type f | head -1)
+    [ -n "$pdb" ] && cp "$pdb" "${OUT}_pdb/"
+  else
+    echo "stage: WARNING $b not built"
+  fi
 done
 
 # 2. Disable-by-default plugins: leading underscore (per collect_files).
@@ -57,4 +65,4 @@ perl installer/setini.pl "$REL/TERATERM.INI" > "$OUT/TERATERM.INI"
 : > "$OUT/portable.ini"
 [ -f ttpmenu/readme.txt ] && cp ttpmenu/readme.txt "$OUT/ttmenu_readme-j.txt"
 
-echo "stage: done -> $OUT"
+echo "stage: done -> $OUT (+ $(find "${OUT}_pdb" -name '*.pdb' | wc -l) pdb -> ${OUT}_pdb)"
