@@ -219,3 +219,69 @@ jobs:
             cygwin/cygterm/cygterm+-x86_64/cygterm.exe
             cygwin/cygterm/cygterm.cfg
             cygwin/cygterm/cygterm+.tar.gz
+
+  # [2c] Integration on Windows: inject the CHM + cygterm into each staged
+  # payload, generate the installer version metadata, and run ISCC to produce the
+  # three installers. (Portable/pdb zips + checksums follow in a later step.)
+  package:
+    runs-on: windows-2022
+    needs: [stage-linux, chm, cygterm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Inno Setup to buildtools
+        shell: cmd
+        working-directory: buildtools
+        run: install_innosetup.bat
+
+      - name: Download staged payloads
+        uses: actions/download-artifact@v4
+        with:
+          pattern: staged-*
+          merge-multiple: true
+
+      - name: Download CHM
+        uses: actions/download-artifact@v4
+        with: { name: chm, path: chm-dl }
+
+      - name: Download cygterm
+        uses: actions/download-artifact@v4
+        with: { name: cygterm, path: cygterm-dl }
+
+      - name: Show downloaded layout
+        shell: cmd
+        run: |
+          echo --- staged trees --- & dir /b teraterm-*
+          echo --- chm-dl --- & dir /s /b chm-dl
+          echo --- cygterm-dl --- & dir /s /b cygterm-dl
+
+      - name: Generate installer version (build_config.isl)
+        shell: cmd
+        run: perl buildtools\svnrev\svnrev.pl --root . --isl installer\build_config.isl
+
+      - name: Inject CHM + cygterm and run ISCC per arch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $iscc = (Resolve-Path "buildtools\innosetup6\ISCC.exe").Path
+          $chmE = (Get-ChildItem -Recurse chm-dl     -Filter "teraterm.chm").FullName
+          $chmJ = (Get-ChildItem -Recurse chm-dl     -Filter "teratermj.chm").FullName
+          $cygX = (Get-ChildItem -Recurse cygterm-dl -Filter "cygterm.exe").FullName
+          $cygC = (Get-ChildItem -Recurse cygterm-dl -Filter "cygterm.cfg").FullName
+          $cygT = (Get-ChildItem -Recurse cygterm-dl -Filter "cygterm+.tar.gz").FullName
+          $out  = (New-Item -ItemType Directory -Force -Path "dist").FullName
+          $map  = @{ "x86_64" = "x64"; "x86" = "x86"; "arm64" = "arm64" }
+          foreach ($a in "x86_64", "x86", "arm64") {
+            $dst = "teraterm-$a"
+            Copy-Item $chmE, $chmJ, $cygX, $cygC, $cygT $dst
+            $src = (Resolve-Path $dst).Path
+            & $iscc "/DSrcDir=$src" "/DArch=$($map[$a])" "/O$out" "installer\teraterm.iss"
+            if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $a (exit $LASTEXITCODE)" }
+          }
+          Get-ChildItem $out
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers
+          path: dist/*.exe
