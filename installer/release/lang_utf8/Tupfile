@@ -1,0 +1,26 @@
+include_rules
+
+# Language files: convert the UTF-8 source .lng in this dir (the source of truth)
+# into the per-language ANSI codepage set (lang/) and the UTF-16LE set
+# (lang_utf16le/) with utf8_to.pl -- pure perl, runs on the Linux host. Replaces
+# release/lang/CMakeLists.txt + release/lang_utf16le/CMakeLists.txt ConvertLNG.
+# en_US.lng is generated into the ANSI set here but dropped from the ANSI package
+# by the stager (matching build_common.bat's `del lang\en_US.lng`); it is kept in
+# lang_utf16le/.
+LNG = perl $(S)/installer/utf8_to.pl
+
+CP1252 = Default.lng en_US.lng fr_FR.lng de_DE.lng es_ES.lng pt_BR.lng it_IT.lng
+ALL = Default.lng en_US.lng fr_FR.lng de_DE.lng es_ES.lng pt_BR.lng it_IT.lng ja_JP.lng ko_KR.lng ru_RU.lng zh_CN.lng zh_TW.lng ta_IN.lng tr_TR.lng
+
+# ANSI codepage set -> lang/
+: foreach $(CP1252) |> ^ LNG cp1252 %b^ $(LNG) cp1252 %f %o |> lang/%B.lng
+: ja_JP.lng |> ^ LNG cp932 %b^ $(LNG) cp932 %f %o |> lang/%B.lng
+: ko_KR.lng |> ^ LNG cp949 %b^ $(LNG) cp949 %f %o |> lang/%B.lng
+: ru_RU.lng |> ^ LNG windows-1251 %b^ $(LNG) windows-1251 %f %o |> lang/%B.lng
+: zh_CN.lng |> ^ LNG cp936 %b^ $(LNG) cp936 %f %o |> lang/%B.lng
+: zh_TW.lng |> ^ LNG cp950 %b^ $(LNG) cp950 %f %o |> lang/%B.lng
+: ta_IN.lng |> ^ LNG cp65001 %b^ $(LNG) cp65001 %f %o |> lang/%B.lng
+: tr_TR.lng |> ^ LNG cp1254 %b^ $(LNG) cp1254 %f %o |> lang/%B.lng
+
+# UTF-16LE set -> lang_utf16le/ (all languages, same converter)
+: foreach $(ALL) |> ^ LNG utf16le %b^ $(LNG) utf16le %f %o |> lang_utf16le/%B.lng
