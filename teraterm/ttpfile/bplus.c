@@ -521,21 +521,35 @@ static void BPSendTCPacket(PBPVar bv)
 
 static void BPSendNPacket(PBPVar bv)
 {
-  int i, c;
+  int i;
   BYTE b;
+  BOOL AtEof = FALSE;
+  BOOL ReadError = FALSE;
   PFileVarProto fv = bv->fv;
   TFileIO *fileio = bv->file;
 
   i = 4;
-  c = 1;
-  while ((i-4 < bv->PktSize-1) && (c>0))
+  while (i-4 < bv->PktSize-1)
   {
-    c = fileio->ReadFile(fileio, &b, 1);
-    if (c==1)
-      BPPut1Byte(bv,b,&i);
-    bv->ByteCount = bv->ByteCount + c;
+    size_t ReadLen;
+    FioStatus rst = fileio->ReadFile(fileio, &b, 1, &ReadLen);
+    if (rst == FIO_ERROR) {
+      ReadError = TRUE;
+      break;
+    }
+    if (rst == FIO_EOF) {
+      AtEof = TRUE;
+      break;
+    }
+    BPPut1Byte(bv,b,&i);
+    bv->ByteCount++;
   }
-  if (c==0)
+  if (ReadError) {
+    // a mid-transfer read failure aborts the send instead of truncating silently
+    BPSendFailure(bv,'E');
+    return;
+  }
+  if (AtEof)
   {
     fileio->Close(fileio);
     bv->FileOpen = FALSE;

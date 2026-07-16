@@ -90,17 +90,18 @@ static BOOL _OpenWrite(TFileIO *fv, const char *filenameU8)
 	return TRUE;
 }
 
-static size_t _ReadFile(TFileIO *fv, void *buf, size_t bytes)
+static FioStatus _ReadFile(TFileIO *fv, void *buf, size_t bytes, size_t *read_bytes)
 {
 	TFileIOWin32 *data = (TFileIOWin32 *)fv->data;
 	HANDLE hFile = data->FileHandle;
 	DWORD NumberOfBytesRead;
 	BOOL result = ReadFile(hFile, buf, (UINT)bytes, &NumberOfBytesRead, NULL);
-	assert(result != 0);
 	if (result == 0) {
-		return 0;
+		*read_bytes = 0;
+		return FIO_ERROR;
 	}
-	return NumberOfBytesRead;
+	*read_bytes = NumberOfBytesRead;
+	return NumberOfBytesRead == 0 ? FIO_EOF : FIO_OK;
 }
 
 static size_t _WriteFile(TFileIO *fv, const void *buf, size_t bytes)

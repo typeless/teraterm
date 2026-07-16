@@ -678,7 +678,6 @@ static void ZSendDataHdr(PZVar zv)
 
 static void ZSendDataDat(PZVar zv)
 {
-	int c;
 	BYTE b;
 	TFileIO *file = zv->file;
 	PFileVarProto fv = zv->fv;
@@ -696,14 +695,26 @@ static void ZSendDataDat(PZVar zv)
 
 	zv->CRC = 0;
 	zv->PktOutCount = 0;
+	BOOL ReadError = FALSE;
 	do {
-		c = file->ReadFile(file, &b, 1);
-		if (c > 0) {
-			ZPutBin(zv, &(zv->PktOutCount), b);
-			zv->CRC = UpdateCRC(b, zv->CRC);
-			zv->ByteCount++;
+		size_t ReadLen;
+		FioStatus rst = file->ReadFile(file, &b, 1, &ReadLen);
+		if (rst == FIO_ERROR) {
+			ReadError = TRUE;
+			break;
 		}
-	} while ((c != 0) && (zv->PktOutCount <= zv->MaxDataLen - 2));
+		if (rst == FIO_EOF) {
+			break;
+		}
+		ZPutBin(zv, &(zv->PktOutCount), b);
+		zv->CRC = UpdateCRC(b, zv->CRC);
+		zv->ByteCount++;
+	} while (zv->PktOutCount <= zv->MaxDataLen - 2);
+	if (ReadError) {
+		// a mid-transfer read failure aborts the send instead of truncating silently
+		ZSendCancel(zv);
+		return;
+	}
 
 	update_dialog(zv, TRUE);
 	zv->Pos = zv->ByteCount;
