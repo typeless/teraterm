@@ -17,3 +17,5 @@ build*/
 *.map
 /gtags.files
 *.bak
+__pycache__/
+*.pyc
