@@ -21,9 +21,15 @@
 #include "ttplugin.h"
 #include "vtdisp.h"
 
+/* Absolute sizes depend on pointer width. x64 and ARM64 (Windows LLP64, 8-byte
+ * pointers) share these frozen numbers -- the ARM64 build passes them unchanged;
+ * x86 (4-byte pointers) has a smaller layout whose frozen values are TBD until
+ * the 32-bit build is wired, so gate on the 64-bit targets. */
+#if defined(_M_X64) || defined(_M_ARM64)
 static_assert(sizeof(TTTSet) == 10632, "TTTSet layout changed; see note above");
 static_assert(sizeof(TComVar) == 98768, "TComVar layout changed; see note above");
 static_assert(sizeof(TTXExports) == 112, "TTXExports layout changed; see note above");
+#endif
 
 /* The single terminal-geometry owner (vtdisp.h) is shared across C and C++ TUs
  * by value, so its layout must stay a plain 12-int aggregate — a later accessor
@@ -35,4 +41,6 @@ static_assert(sizeof(TermGeometry) == 12 * sizeof(int), "TermGeometry must stay 
 static_assert(offsetof(TTXExports, size) == 0, "TTXExports.size moved");
 static_assert(offsetof(TTXExports, loadOrder) == 4, "TTXExports.loadOrder moved");
 
+#if defined(_M_X64) || defined(_M_ARM64)
 static_assert(offsetof(TComVar, ts) == 98736, "TComVar.ts moved; layout changed");
+#endif

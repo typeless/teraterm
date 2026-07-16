@@ -1,0 +1,24 @@
+include_rules
+
+# cyglaunch.exe - GUI launcher that opens a CygTerm session in the detected
+# Cygwin/MSYS2 install. GUI subsystem but a wmain() entry point, so the entry is
+# overridden. Links common_static + cyglib (both putup-built static libs).
+COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../../teraterm/common
+
+CFLAGS  += -I$(S)/cygwin/cyglaunch -I$(S)/cygwin/cyglib -I$(S)/teraterm/common -I$(COMMON_GENDIR)
+RCFLAGS += /I $(S)/cygwin/cyglaunch
+
+srcs_c  += cyglaunch.c
+srcs_rc += cyglaunch.rc
+
+: foreach $(srcs_c)  | $(S)/teraterm/common/<gen> |> !cc |> {objs}
+: foreach $(srcs_rc) |> !rc |> {res}
+
+# GUI subsystem, wmain entry. clang-cl/lld-link do not auto-link Win32 libs, and
+# common_static pulls the transitive syslib set.
+LDFLAGS += /SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup
+LDFLAGS += advapi32.lib comctl32.lib comdlg32.lib gdi32.lib kernel32.lib ole32.lib oleaut32.lib shell32.lib user32.lib uuid.lib ws2_32.lib
+LDFLAGS += setupapi.lib imagehlp.lib shlwapi.lib winmm.lib imm32.lib version.lib winspool.lib
+LDFLAGS += bcrypt.lib crypt32.lib
+
+: {objs} {res} $(S)/teraterm/common/common_static.lib $(S)/cygwin/cyglib/cyglib.lib |> !link |> cyglaunch$(_exe)

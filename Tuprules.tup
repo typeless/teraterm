@@ -33,7 +33,7 @@ import XWIN_SPLAT
 XWIN_INC = /imsvc $(XWIN_SPLAT)/crt/include /imsvc $(XWIN_SPLAT)/sdk/include/ucrt /imsvc $(XWIN_SPLAT)/sdk/include/um /imsvc $(XWIN_SPLAT)/sdk/include/shared
 CFLAGS += $(XWIN_INC)
 CXXFLAGS += $(XWIN_INC)
-LDFLAGS += /libpath:$(XWIN_SPLAT)/crt/lib/x86_64 /libpath:$(XWIN_SPLAT)/sdk/lib/ucrt/x86_64 /libpath:$(XWIN_SPLAT)/sdk/lib/um/x86_64
+LDFLAGS += /libpath:$(XWIN_SPLAT)/crt/lib/@(XWIN_ARCH) /libpath:$(XWIN_SPLAT)/sdk/lib/ucrt/@(XWIN_ARCH) /libpath:$(XWIN_SPLAT)/sdk/lib/um/@(XWIN_ARCH)
 RCFLAGS += /I $(XWIN_SPLAT)/sdk/include/um /I $(XWIN_SPLAT)/sdk/include/shared /I $(XWIN_SPLAT)/sdk/include/ucrt
 endif
 
