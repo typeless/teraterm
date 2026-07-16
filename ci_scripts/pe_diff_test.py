@@ -167,6 +167,95 @@ def test_tolerate_timestamp_on_real_pe():
         assert pe_diff.compare(a, b) == [], "timestamp should be tolerated"
 
 
+# --- selfcheck (pure-logic) --------------------------------------------------
+
+def _tree_facets(machine="IMAGE_FILE_MACHINE_AMD64", with_apps=True):
+    def one(manifest=False, ver=False):
+        f = _base_facets()
+        f["machine"] = machine
+        f["_info"]["has_manifest"] = manifest
+        f["has_version_info"] = ver
+        return f
+    d = {"ttpcmn.dll": one(), "ttxssh.dll": one()}
+    if with_apps:
+        for app in pe_diff.MANIFEST_APPS:
+            d[app] = one(manifest=True, ver=True)
+    return d
+
+
+def test_selfcheck_clean_passes():
+    assert pe_diff.selfcheck(_tree_facets(), "x64") == []
+
+
+def test_selfcheck_wrong_machine_fails():
+    problems = pe_diff.selfcheck(_tree_facets("IMAGE_FILE_MACHINE_I386"), "x64")
+    assert problems and all("machine" in p for p in problems), problems
+
+
+def test_selfcheck_missing_gui_app_fails():
+    d = _tree_facets()
+    del d["ttpmenu.exe"]
+    problems = pe_diff.selfcheck(d, "x64")
+    assert any("ttpmenu.exe" in p and "not found" in p for p in problems), problems
+
+
+def test_selfcheck_gui_app_without_manifest_fails():
+    d = _tree_facets()
+    d["ttermpro.exe"]["_info"]["has_manifest"] = False
+    problems = pe_diff.selfcheck(d, "x64")
+    assert any("ttermpro.exe" in p and "manifest" in p for p in problems), problems
+
+
+def test_selfcheck_gui_app_without_version_fails():
+    d = _tree_facets()
+    d["ttpmacro.exe"]["has_version_info"] = False
+    problems = pe_diff.selfcheck(d, "x64")
+    assert any("ttpmacro.exe" in p and "version" in p for p in problems), problems
+
+
+# --- selfcheck (real trees) --------------------------------------------------
+
+TREES = {"x64": os.path.join(REPO, "build-win"),
+         "x86": os.path.join(REPO, "build-win32"),
+         "arm64": os.path.join(REPO, "build-arm64")}
+
+
+def _real_selfcheck(arch):
+    tree = TREES[arch]
+    if not os.path.isdir(tree):
+        return None
+    facets = {n: pe_diff.extract(p) for n, p in pe_diff._pes_by_name(tree).items()}
+    return pe_diff.selfcheck(facets, arch)
+
+
+def test_selfcheck_real_x64():
+    r = _real_selfcheck("x64")
+    return "skip (no build-win)" if r is None else (_assert_empty(r) or None)
+
+
+def test_selfcheck_real_x86():
+    r = _real_selfcheck("x86")
+    return "skip (no build-win32)" if r is None else (_assert_empty(r) or None)
+
+
+def test_selfcheck_real_arm64():
+    r = _real_selfcheck("arm64")
+    return "skip (no build-arm64)" if r is None else (_assert_empty(r) or None)
+
+
+def test_selfcheck_real_wrong_arch_fails():
+    tree = TREES["x64"]
+    if not os.path.isdir(tree):
+        return "skip (no build-win)"
+    facets = {n: pe_diff.extract(p) for n, p in pe_diff._pes_by_name(tree).items()}
+    problems = pe_diff.selfcheck(facets, "arm64")  # x64 tree, wrong expected arch
+    assert problems and all("machine" in p for p in problems), problems
+
+
+def _assert_empty(r):
+    assert r == [], r
+
+
 # --- runner ------------------------------------------------------------------
 
 def main():
