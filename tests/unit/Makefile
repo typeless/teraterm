@@ -21,7 +21,7 @@ B      := build
 
 SAN      := -fsanitize=address,undefined -fno-omit-frame-pointer
 CFLAGS   := -g -O1 -Wall $(SAN)
-CXXFLAGS := -std=c++17 -g -O1 -Wall $(SAN)
+CXXFLAGS := -std=c++23 -g -O1 -Wall $(SAN)
 
 # Header prerequisites: the single-command compiles below can't be tracked by
 # the compiler, so list the headers explicitly. Without this, editing a shim or
@@ -84,9 +84,9 @@ $(B)/agent_shmem: $(TT)/tests/test_agent_shmem.c $(TT)/agent_shmem.c $(AGENT_H) 
 $(B)/codeconv: test_codeconv.cpp $(COMMON)/codeconv.cpp $(B)/winhost.o $(B)/catch_amalgamated.o $(CODECONV_H) | $(B)
 	$(CXX) $(CXXFLAGS) -Iwinhost -I$(COMMON) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
-# telnet_neg is pure C (no shim); compile it as C, link with the C++ test.
-$(B)/telnet_neg_impl.o: $(TT)/telnet_neg.c $(TT)/telnet_neg.h $(TT)/telnet_defs.h | $(B)
-	$(CC) $(CFLAGS) -I$(TT) -c $< -o $@
+# telnet_neg is C++ (modern conventions) behind a C-compatible header.
+$(B)/telnet_neg_impl.o: $(TT)/telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -c $< -o $@
 
 $(B)/telnet_neg: test_telnet_neg.cpp $(TT)/telnet_neg.h $(TT)/telnet_defs.h $(B)/telnet_neg_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@

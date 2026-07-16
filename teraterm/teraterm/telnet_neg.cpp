@@ -6,17 +6,23 @@
  * from telnet.c. No ts/cv globals, no comm layer, no Win32 — every input is a
  * parameter and every emitted byte goes through the sink, so it is host-testable
  * and differentially checkable against the original.
+ *
+ * Modernized to the house C++23 conventions (anonymous-namespace internal
+ * linkage, trailing return types, left-bound pointers/refs). The public surface
+ * keeps C linkage and a C-compatible header because telnet.c (still C) calls it.
  */
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 #include "telnet_neg.h"
+
+namespace {
 
 /* Option status and queue values, matching the original enums in telnet.c. */
 enum { No, Yes, WantNo, WantYes };
 enum { Empty, Opposite };
 
-static void send_back(TelNegState *st, TelNegSink sink, void *ctx, unsigned char a, unsigned char b)
+auto send_back(TelNegState* st, TelNegSink sink, void* ctx, unsigned char a, unsigned char b) -> void
 {
 	unsigned char s[3];
 	(void)st;
@@ -26,12 +32,12 @@ static void send_back(TelNegState *st, TelNegSink sink, void *ctx, unsigned char
 	sink(s, 3, ctx);
 }
 
-static void send_winsize(TelNegState *st, TelNegSink sink, void *ctx)
+auto send_winsize(TelNegState* st, TelNegSink sink, void* ctx) -> void
 {
 	unsigned char buf[21];
 	int i = 0;
-	const int hx = (st->WinSizeX >> 8) & 0xff, lx = st->WinSizeX & 0xff;
-	const int hy = (st->WinSizeY >> 8) & 0xff, ly = st->WinSizeY & 0xff;
+	int const hx = (st->WinSizeX >> 8) & 0xff, lx = st->WinSizeX & 0xff;
+	int const hy = (st->WinSizeY >> 8) & 0xff, ly = st->WinSizeY & 0xff;
 
 	buf[i++] = IAC;
 	buf[i++] = SB;
@@ -49,7 +55,7 @@ static void send_winsize(TelNegState *st, TelNegSink sink, void *ctx)
 	sink(buf, i, ctx);
 }
 
-static void parse_iac(TelNegState *st, unsigned char b)
+auto parse_iac(TelNegState* st, unsigned char b) -> void
 {
 	switch (b) {
 	case SE:
@@ -89,7 +95,7 @@ static void parse_iac(TelNegState *st, unsigned char b)
 	}
 }
 
-static void parse_sb(TelNegState *st, const TelNegConfig *cfg, unsigned char b, TelNegSink sink, void *ctx)
+auto parse_sb(TelNegState* st, const TelNegConfig* cfg, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (st->SubOptIAC) {
 		st->SubOptIAC = 0;
@@ -110,8 +116,8 @@ static void parse_sb(TelNegState *st, const TelNegConfig *cfg, unsigned char b, 
 					resp[n++] = TERMTYPE;
 					resp[n++] = 0;
 					{
-						const char *p = cfg->TermType;
-						for (; p != NULL && *p != 0 && n < (int)sizeof(resp) - 2; p++) {
+						char const* p = cfg->TermType;
+						for (; p != nullptr && *p != 0 && n < (int)sizeof(resp) - 2; p++) {
 							resp[n++] = (unsigned char)*p;
 						}
 					}
@@ -190,7 +196,7 @@ static void parse_sb(TelNegState *st, const TelNegConfig *cfg, unsigned char b, 
 
 /* ECHO handling shared by WILL/WONT: flip LocalEcho when TelEcho is on, and drop
  * line mode once the peer echoes. */
-static void apply_echo(TelNegState *st, const TelNegConfig *cfg)
+auto apply_echo(TelNegState* st, const TelNegConfig* cfg) -> void
 {
 	if (cfg->TelEcho) {
 		switch (st->HisOpt[ECHO].Status) {
@@ -209,7 +215,7 @@ static void apply_echo(TelNegState *st, const TelNegConfig *cfg)
 	}
 }
 
-static void parse_will(TelNegState *st, const TelNegConfig *cfg, unsigned char b, TelNegSink sink, void *ctx)
+auto parse_will(TelNegState* st, const TelNegConfig* cfg, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->HisOpt[b].Status) {
@@ -285,7 +291,7 @@ static void parse_will(TelNegState *st, const TelNegConfig *cfg, unsigned char b
 	st->Status = TelIdle;
 }
 
-static void parse_wont(TelNegState *st, const TelNegConfig *cfg, unsigned char b, TelNegSink sink, void *ctx)
+auto parse_wont(TelNegState* st, const TelNegConfig* cfg, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->HisOpt[b].Status) {
@@ -351,7 +357,7 @@ static void parse_wont(TelNegState *st, const TelNegConfig *cfg, unsigned char b
 	st->Status = TelIdle;
 }
 
-static void parse_do(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto parse_do(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->MyOpt[b].Status) {
@@ -429,7 +435,7 @@ static void parse_do(TelNegState *st, unsigned char b, TelNegSink sink, void *ct
 	st->Status = TelIdle;
 }
 
-static void parse_dont(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto parse_dont(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->MyOpt[b].Status) {
@@ -491,7 +497,9 @@ static void parse_dont(TelNegState *st, unsigned char b, TelNegSink sink, void *
 	st->Status = TelIdle;
 }
 
-void TelNegInit(TelNegState *st, int win_x, int win_y)
+} // namespace
+
+auto TelNegInit(TelNegState* st, int win_x, int win_y) -> void
 {
 	int i;
 	memset(st, 0, sizeof(*st));
@@ -522,7 +530,7 @@ void TelNegInit(TelNegState *st, int win_x, int win_y)
 	st->WinSizeY = win_y;
 }
 
-void TelNegFeed(TelNegState *st, const TelNegConfig *cfg, unsigned char b, TelNegSink sink, void *ctx)
+auto TelNegFeed(TelNegState* st, const TelNegConfig* cfg, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	st->ChangeWinSize = 0;
 
@@ -551,7 +559,7 @@ void TelNegFeed(TelNegState *st, const TelNegConfig *cfg, unsigned char b, TelNe
 	}
 }
 
-void TelNegEnableHisOpt(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto TelNegEnableHisOpt(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->HisOpt[b].Status) {
@@ -571,7 +579,7 @@ void TelNegEnableHisOpt(TelNegState *st, unsigned char b, TelNegSink sink, void 
 	}
 }
 
-void TelNegDisableHisOpt(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto TelNegDisableHisOpt(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->HisOpt[b].Status) {
@@ -591,7 +599,7 @@ void TelNegDisableHisOpt(TelNegState *st, unsigned char b, TelNegSink sink, void
 	}
 }
 
-void TelNegEnableMyOpt(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto TelNegEnableMyOpt(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->MyOpt[b].Status) {
@@ -611,7 +619,7 @@ void TelNegEnableMyOpt(TelNegState *st, unsigned char b, TelNegSink sink, void *
 	}
 }
 
-void TelNegDisableMyOpt(TelNegState *st, unsigned char b, TelNegSink sink, void *ctx)
+auto TelNegDisableMyOpt(TelNegState* st, unsigned char b, TelNegSink sink, void* ctx) -> void
 {
 	if (b <= MaxTelOpt) {
 		switch (st->MyOpt[b].Status) {
@@ -631,7 +639,7 @@ void TelNegDisableMyOpt(TelNegState *st, unsigned char b, TelNegSink sink, void 
 	}
 }
 
-void TelNegInformWinSize(TelNegState *st, int nx, int ny, TelNegSink sink, void *ctx)
+auto TelNegInformWinSize(TelNegState* st, int nx, int ny, TelNegSink sink, void* ctx) -> void
 {
 	if ((st->MyOpt[NAWS].Status == Yes) && (nx != st->WinSizeX || ny != st->WinSizeY)) {
 		st->WinSizeX = nx;

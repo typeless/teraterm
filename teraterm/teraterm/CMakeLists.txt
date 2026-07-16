@@ -56,7 +56,7 @@ add_executable(
   telnet.c
   telnet.h
   telnet_defs.h
-  telnet_neg.c
+  telnet_neg.cpp
   telnet_neg.h
   teraprn.cpp
   teraprn.h
