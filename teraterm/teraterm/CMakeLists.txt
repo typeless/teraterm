@@ -94,6 +94,8 @@ add_executable(
   vtterm.h
   vtparams.cpp
   vtparams.h
+  titlestack.cpp
+  titlestack.h
   vtwin.cpp
   vtwin.h
   winjump.c

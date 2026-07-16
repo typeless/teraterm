@@ -33,7 +33,7 @@ AGENT_H    := $(wildcard $(TT)/agent_*.h)
 # Legacy CHECK()-harness tests (C, self-contained). Kept running verbatim.
 AGENT_TESTS := agent_jsonrpc agent_mcp agent_shmem
 # Catch2 tests (C++), one binary each.
-CATCH_TESTS := codeconv telnet_neg buffcell vtparams
+CATCH_TESTS := codeconv telnet_neg buffcell vtparams titlestack
 
 ALL_TESTS := $(AGENT_TESTS) $(CATCH_TESTS)
 
@@ -106,6 +106,13 @@ $(B)/buffcell_impl.o: $(TT)/buffcell.cpp $(TT)/buffcell.h $(CODECONV_H) | $(B)
 
 $(B)/buffcell: test_buffcell.cpp $(TT)/buffcell.h $(COMMON)/codeconv.cpp $(B)/buffcell_impl.o $(B)/winhost.o $(B)/catch_amalgamated.o $(CODECONV_H) | $(B)
 	$(CXX) $(CXXFLAGS) -Iwinhost -I$(TT) -I$(COMMON) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
+
+# titlestack is a small C++ value-container module behind a C-compatible header.
+$(B)/titlestack_impl.o: $(TT)/titlestack.cpp $(TT)/titlestack.h | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -c $< -o $@
+
+$(B)/titlestack: test_titlestack.cpp $(TT)/titlestack.h $(B)/titlestack_impl.o $(B)/catch_amalgamated.o | $(B)
+	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
 clean:
 	@rm -rf $(B)

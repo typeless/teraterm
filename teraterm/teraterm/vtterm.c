@@ -64,6 +64,7 @@
 
 #include "vtterm.h"
 #include "vtparams.h"
+#include "titlestack.h"
 #include "tttypes_charset.h"
 
 // 入力コードをダンプする
@@ -151,12 +152,6 @@ static VTParams P;
 static int ParseMode;
 static int ChangeEmu;
 
-typedef struct tstack {
-	wchar_t *title;
-	struct tstack *next;
-} TStack;
-typedef TStack *PTStack;
-static PTStack TitleStack = NULL;
 
 /* user defined keys */
 static BOOL WaitKeyId, WaitHi;
@@ -2756,24 +2751,11 @@ static void CSSunSequence() /* Sun terminal private sequences */
 		switch (P.Param[2]) {
 		  case 0:
 		  case 1:
-		  case 2: {
-			PTStack t;
-			if (ts.AcceptTitleChangeRequest && (t=malloc(sizeof(TStack))) != NULL) {
-				if (cv.TitleRemoteW == NULL) {
-					t->title = NULL;
-					t->next = TitleStack;
-					TitleStack = t;
-				}
-				else if ((t->title = _wcsdup(cv.TitleRemoteW)) != NULL) {
-					t->next = TitleStack;
-					TitleStack = t;
-				}
-				else {
-					free(t);
-				}
+		  case 2:
+			if (ts.AcceptTitleChangeRequest) {
+				TitleStackPush(cv.TitleRemoteW);
 			}
 			break;
-		  }
 		}
 		break;
 
@@ -2782,18 +2764,15 @@ static void CSSunSequence() /* Sun terminal private sequences */
 		switch (P.Param[2]) {
 		  case 0:
 		  case 1:
-		  case 2: {
-			if (ts.AcceptTitleChangeRequest && TitleStack != NULL) {
-				PTStack t;
-				t = TitleStack;
-				TitleStack = t->next;
+		  case 2:
+			if (ts.AcceptTitleChangeRequest && !TitleStackEmpty()) {
+				wchar_t *popped;
+				TitleStackPop(&popped);
 				free(cv.TitleRemoteW);
-				cv.TitleRemoteW = t->title;
+				cv.TitleRemoteW = popped;
 				ChangeTitle();
-				free(t);
 			}
 			break;
-		  }
 		}
 	}
 }

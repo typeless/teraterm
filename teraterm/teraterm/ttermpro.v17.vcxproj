@@ -472,6 +472,7 @@
     <ClCompile Include="vtdraw.cpp" />
     <ClCompile Include="vtterm.c" />
     <ClCompile Include="vtparams.cpp" />
+    <ClCompile Include="titlestack.cpp" />
     <ClCompile Include="vtwin.cpp" />
     <ClCompile Include="winjump.c" />
     <ClCompile Include="win_pp.cpp" />
@@ -628,6 +629,7 @@
     <ClInclude Include="vtdisp.h" />
     <ClInclude Include="vtterm.h" />
     <ClInclude Include="vtparams.h" />
+    <ClInclude Include="titlestack.h" />
     <ClInclude Include="vtwin.h" />
     <ClInclude Include="unicode.h" />
   </ItemGroup>
