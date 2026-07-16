@@ -1,0 +1,135 @@
+name: Release (putup)
+
+# Produce the shipped Tera Term release artifacts from the putup (clang-cl + xwin)
+# build. Tag-triggered; workflow_dispatch for dry runs while this is built out.
+#
+# Being assembled incrementally:
+#   [1] stage-linux   -- DONE: putup build x86/x64/arm64 -> flat payload + _pdb.
+#   [2] package-win   -- TODO: CHM (hhc) + cygterm (Cygwin gcc) + ISCC installers.
+#   [3] differential  -- TODO: pe_diff.py diff-tree putup vs the msbuild reference.
+#   [4] publish       -- TODO: gh release create.
+#
+# NOTE: the build steps below duplicate .github/workflows/putup.yml; once the
+# Windows packaging is proven they should be extracted into a reusable
+# (workflow_call) workflow that both this and putup.yml invoke.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Exercise the release path on PRs that touch it (the Windows packaging jobs,
+  # added later, will gate themselves to non-PR events to keep PR cost down).
+  pull_request:
+    paths:
+      - '.github/workflows/putup-release.yml'
+      - 'ci_scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - { name: x86_64, xwin: x86_64,  config: xwin.config,      dir: build-win }
+          - { name: x86,    xwin: x86,     config: win32-x86.config, dir: build-win32 }
+          - { name: arm64,  xwin: aarch64, config: arm64.config,     dir: build-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM toolchain (clang-cl, lld-link, llvm-lib, llvm-rc)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+          for t in clang-cl lld-link llvm-lib llvm-rc; do
+            sudo ln -sf "$(ls /usr/bin/$t-* | sort -V | tail -1)" /usr/local/bin/$t
+          done
+
+      - name: Install putup
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/typeless/putup/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache xwin splat
+        id: cache-xwin
+        uses: actions/cache@v4
+        with:
+          path: ~/.xwin/splat
+          key: xwin-splat-0.9.0-${{ matrix.arch.xwin }}
+
+      - name: Fetch MSVC CRT + Windows SDK (xwin)
+        if: steps.cache-xwin.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz | tar -xz
+          ./xwin-*/xwin --accept-license --arch ${{ matrix.arch.xwin }} splat --output "$HOME/.xwin/splat"
+
+      - name: Cache vendored third-party sources
+        id: cache-libs
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/oniguruma
+            libs/SFMT
+            libs/zlib
+            libs/libressl
+            libs/argon2
+            libs/cJSON
+          key: vendor-libs-${{ hashFiles('.github/workflows/putup.yml') }}
+
+      - name: Restore tracked libs files after cache
+        run: git checkout -- libs
+
+      - name: Vendor third-party sources
+        if: steps.cache-libs.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          tmp="$(mktemp -d)"
+          get() { curl -fsSL "$1" -o "$tmp/$2"; }
+          merge() { mkdir -p "libs/$2" && cp -a "$tmp/$1/." "libs/$2/"; }
+          get https://github.com/kkos/oniguruma/releases/download/v6.9.10/onig-6.9.10.tar.gz onig.tgz
+          tar -xzf "$tmp/onig.tgz" -C "$tmp"; merge onig-6.9.10 oniguruma
+          get https://github.com/MersenneTwister-Lab/SFMT/archive/refs/tags/1.5.1.tar.gz sfmt.tgz
+          tar -xzf "$tmp/sfmt.tgz" -C "$tmp"; merge SFMT-1.5.1 SFMT
+          get https://github.com/madler/zlib/archive/refs/tags/v1.3.2.tar.gz zlib.tgz
+          tar -xzf "$tmp/zlib.tgz" -C "$tmp"; merge zlib-1.3.2 zlib
+          get https://github.com/libressl/portable/releases/download/v4.2.1/libressl-4.2.1.tar.gz libressl.tgz
+          tar -xzf "$tmp/libressl.tgz" -C "$tmp"; merge libressl-4.2.1 libressl
+          get https://github.com/P-H-C/phc-winner-argon2/archive/refs/tags/20190702.tar.gz argon2.tgz
+          tar -xzf "$tmp/argon2.tgz" -C "$tmp"; merge phc-winner-argon2-20190702 argon2
+          get https://github.com/DaveGamble/cJSON/archive/v1.7.14.zip cjson.zip
+          unzip -q "$tmp/cjson.zip" -d "$tmp"; merge cJSON-1.7.14 cJSON
+          rm -rf "$tmp"
+
+      - name: Verify vendored dependency hashes
+        run: |
+          set -eu
+          pin() { printf '%s  libs/%s\n' "$2" "$1" | sha256sum -c -; }
+          pin oniguruma/HISTORY   bdf00b251fa9dfb2aea3e1c007a0994bd40203a56706402c7cebb976c41d0cae
+          pin SFMT/CHANGE-LOG.txt ac65302c740579c7dccc99b2fcd735af3027957680f2ce227042755646abb1db
+          pin zlib/ChangeLog      c6f42df0f27486db922d633e7a70757b56c6cd9f742f21af419d232649efbede
+          pin libressl/ChangeLog  f99c885d5318dc6357b4bb3563c0fb7ea536ff1734c67a436aa2532ebb4b5bd7
+          pin argon2/CHANGELOG.md 1b513eb6524f0a3ac5e182bf2713618ddd8f2616ebe6e090d647c49b3e7eb2ec
+          pin cJSON/CHANGELOG.md  4ff95e0060ea2dbc13720079399e77d404d89e514b569fcc8d741f3272c98e53
+
+      - name: Build
+        run: |
+          export XWIN_SPLAT="$HOME/.xwin/splat"
+          putup configure --config configs/${{ matrix.arch.config }} -B ${{ matrix.arch.dir }}
+          putup -B ${{ matrix.arch.dir }} || putup -B ${{ matrix.arch.dir }}
+
+      - name: Stage flat payload + PDBs
+        run: |
+          sh ci_scripts/check_release_manifest.sh ${{ matrix.arch.dir }}
+          sh ci_scripts/stage_release.sh ${{ matrix.arch.dir }} teraterm-${{ matrix.arch.name }}
+
+      - name: Upload staged payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: staged-${{ matrix.arch.name }}
+          path: |
+            teraterm-${{ matrix.arch.name }}/
+            teraterm-${{ matrix.arch.name }}_pdb/
