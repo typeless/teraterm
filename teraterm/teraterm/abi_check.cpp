@@ -9,9 +9,10 @@
  * already-built plugin. Grow the structs append-only (or reuse reserve_N slots);
  * when a change is deliberate, bump the frozen number here in the same commit.
  *
- * Frozen for target x86_64-pc-windows-msvc (clang-cl). A different ABI (x86,
- * ARM64) has different numbers — if this file is ever built for another target,
- * gate the constants on the architecture.
+ * Frozen per target ABI (clang-cl): x64 and ARM64 share the Windows LLP64
+ * layout; x86 (ILP32, 4-byte pointers) has its own smaller numbers. Each shipped
+ * architecture is gated below; an unhandled target is a hard error, not a silent
+ * skip.
  */
 #include <stddef.h>
 #include <type_traits>
@@ -22,13 +23,18 @@
 #include "vtdisp.h"
 
 /* Absolute sizes depend on pointer width. x64 and ARM64 (Windows LLP64, 8-byte
- * pointers) share these frozen numbers -- the ARM64 build passes them unchanged;
- * x86 (4-byte pointers) has a smaller layout whose frozen values are TBD until
- * the 32-bit build is wired, so gate on the 64-bit targets. */
+ * pointers) share the same frozen numbers; x86 (ILP32, 4-byte pointers) has its
+ * own smaller layout. */
 #if defined(_M_X64) || defined(_M_ARM64)
 static_assert(sizeof(TTTSet) == 10632, "TTTSet layout changed; see note above");
 static_assert(sizeof(TComVar) == 98768, "TComVar layout changed; see note above");
 static_assert(sizeof(TTXExports) == 112, "TTXExports layout changed; see note above");
+#elif defined(_M_IX86)
+static_assert(sizeof(TTTSet) == 10544, "TTTSet layout changed; see note above");
+static_assert(sizeof(TComVar) == 98656, "TComVar layout changed; see note above");
+static_assert(sizeof(TTXExports) == 60, "TTXExports layout changed; see note above");
+#else
+#error "unknown ABI target; add frozen struct sizes for this architecture"
 #endif
 
 /* The single terminal-geometry owner (vtdisp.h) is shared across C and C++ TUs
@@ -43,4 +49,6 @@ static_assert(offsetof(TTXExports, loadOrder) == 4, "TTXExports.loadOrder moved"
 
 #if defined(_M_X64) || defined(_M_ARM64)
 static_assert(offsetof(TComVar, ts) == 98736, "TComVar.ts moved; layout changed");
+#elif defined(_M_IX86)
+static_assert(offsetof(TComVar, ts) == 98636, "TComVar.ts moved; layout changed");
 #endif

@@ -1,8 +1,9 @@
 name: Build (putup / clang-cl + xwin)
 
-# Cross-compile the whole Tera Term distribution for Windows x86_64 (MSVC ABI)
-# from Linux with clang-cl + lld-link against an xwin-splatted MSVC SDK/CRT,
-# driven by putup. No Windows runner or Visual Studio needed.
+# Cross-compile the whole Tera Term distribution for Windows (MSVC ABI) from
+# Linux with clang-cl + lld-link against an xwin-splatted MSVC SDK/CRT, driven by
+# putup. No Windows runner or Visual Studio needed. Builds all three shipped
+# architectures (x86 / x64 / arm64) as a matrix.
 
 on:
   push:
@@ -27,6 +28,13 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - { name: x86_64, xwin: x86_64,  config: xwin.config,      dir: build-win,   file: "x86-64" }
+          - { name: x86,    xwin: x86,     config: win32-x86.config, dir: build-win32, file: "80386" }
+          - { name: arm64,  xwin: aarch64, config: arm64.config,     dir: build-arm64, file: "Aarch64" }
     steps:
       - uses: actions/checkout@v4
 
@@ -50,13 +58,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.xwin/splat
-          key: xwin-splat-0.9.0-x86_64
+          key: xwin-splat-0.9.0-${{ matrix.arch.xwin }}
 
       - name: Fetch MSVC CRT + Windows SDK (xwin)
         if: steps.cache-xwin.outputs.cache-hit != 'true'
         run: |
           curl -fsSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz | tar -xz
-          ./xwin-*/xwin --accept-license --arch x86_64 splat --output "$HOME/.xwin/splat"
+          ./xwin-*/xwin --accept-license --arch ${{ matrix.arch.xwin }} splat --output "$HOME/.xwin/splat"
 
       # Third-party sources are pinned by version in this file, so key the cache
       # on its hash; a version bump here invalidates the cache automatically.
@@ -133,32 +141,33 @@ jobs:
       - name: Build
         run: |
           export XWIN_SPLAT="$HOME/.xwin/splat"
-          putup configure --config configs/xwin.config -B build-win
+          putup configure --config configs/${{ matrix.arch.config }} -B ${{ matrix.arch.dir }}
           # putup 0.1.0 does not always order $(S)-path lib deps on a cold build;
           # a second pass converges (a no-op once everything is up to date).
-          putup -B build-win || putup -B build-win
+          putup -B ${{ matrix.arch.dir }} || putup -B ${{ matrix.arch.dir }}
 
       - name: Verify build output
         run: |
-          exe="$(find build-win -name '*.exe' | wc -l)"
-          dll="$(find build-win -name '*.dll' | wc -l)"
+          dir="${{ matrix.arch.dir }}"
+          exe="$(find "$dir" -name '*.exe' | wc -l)"
+          dll="$(find "$dir" -name '*.dll' | wc -l)"
           echo "built ${exe} exe + ${dll} dll"
-          find build-win \( -name '*.exe' -o -name '*.dll' \) | sort
+          find "$dir" \( -name '*.exe' -o -name '*.dll' \) | sort
           test "$exe" -ge 8
           test "$dll" -ge 20
-          file build-win/teraterm/teraterm/ttermpro.exe | grep -q 'PE32+'
-          file build-win/ttssh2/ttxssh/ttxssh.dll | grep -q 'PE32+'
+          file "$dir/teraterm/teraterm/ttermpro.exe" | grep -q '${{ matrix.arch.file }}'
+          file "$dir/ttssh2/ttxssh/ttxssh.dll" | grep -q '${{ matrix.arch.file }}'
 
       - name: Release-manifest gate (every shipped binary is built)
-        run: sh ci_scripts/check_release_manifest.sh build-win
+        run: sh ci_scripts/check_release_manifest.sh ${{ matrix.arch.dir }}
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: teraterm-windows-x86_64
+          name: teraterm-windows-${{ matrix.arch.name }}
           path: |
-            build-win/**/*.exe
-            build-win/**/*.dll
+            ${{ matrix.arch.dir }}/**/*.exe
+            ${{ matrix.arch.dir }}/**/*.dll
 
   # Run the Catch2 unit tests on real Windows against the cross-built binary,
   # including the [win]-tagged cases that exercise the genuine Win32 codepage
