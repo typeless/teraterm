@@ -280,8 +280,36 @@ jobs:
           }
           Get-ChildItem $out
 
-      - name: Upload installers
+      - name: Portable + PDB zips and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = (Resolve-Path "dist").Path
+          $map = @{ "x86_64" = "x64"; "x86" = "x86"; "arm64" = "arm64" }
+          foreach ($a in "x86_64", "x86", "arm64") {
+            $arch = $map[$a]
+            $exe = Get-ChildItem $out -Filter "*-$arch-*.exe" | Select-Object -First 1
+            if (-not $exe) { $exe = Get-ChildItem $out -Filter "*-$arch.exe" | Select-Object -First 1 }
+            $base = $exe.BaseName
+            # Zip payloads under their versioned top-level dir name (as create_package does).
+            cmake -E copy_directory "teraterm-$a" "$out\$base"
+            cmake -E copy_directory "teraterm-${a}_pdb" "$out\${base}_pdb"
+            Push-Location $out
+            cmake -E tar cf "$base.zip" --format=zip -- "$base"
+            cmake -E tar cf "${base}_pdb.zip" --format=zip -- "${base}_pdb"
+            cmake -E rm -rf "$base" "${base}_pdb"
+            cmake -E sha256sum "$base.exe" "$base.zip" "${base}_pdb.zip" | Out-File -Encoding ascii "$base.sha256sum"
+            cmake -E sha512sum "$base.exe" "$base.zip" "${base}_pdb.zip" | Out-File -Encoding ascii "$base.sha512sum"
+            Pop-Location
+          }
+          Get-ChildItem $out
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installers
-          path: dist/*.exe
+          name: release
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.sha256sum
+            dist/*.sha512sum
