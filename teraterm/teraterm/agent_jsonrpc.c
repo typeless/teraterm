@@ -155,18 +155,20 @@ static size_t emit_result(const cJSON *req, cJSON *result, char *out, size_t cap
 	return emit(resp, out, cap);
 }
 
-/* Map a send_* negative return to an error string; NULL if it was success. */
-static const char *send_err_msg(int rc)
+/* Map a shared AGENT_ERR_* code (or a non-negative success value) to a message,
+ * or NULL for success. Used by every backend call that returns count-or-error,
+ * so the message reflects the actual code rather than the call site's guess. */
+static const char *agent_err_msg(int rc)
 {
 	switch (rc) {
 	case AGENT_ERR_NOTCONN:
 		return "not connected";
 	case AGENT_ERR_NOTALLOWED:
-		return "send not allowed";
+		return "not allowed";
 	case AGENT_ERR_NOSESSION:
 		return "unknown session";
 	default:
-		return rc < 0 ? "send failed" : NULL;
+		return rc < 0 ? "operation failed" : NULL;
 	}
 }
 
@@ -267,7 +269,7 @@ static cJSON *call_read(const AgentBackend *be, const cJSON *params, int scrollb
 	}
 	if (n < 0) {
 		free(buf);
-		*err = "unknown session";
+		*err = agent_err_msg(n);
 		return NULL;
 	}
 
@@ -314,7 +316,7 @@ static cJSON *call_send_line(const AgentBackend *be, const cJSON *params, const 
 	int rc = be->send_text(be->ctx, param_session(params), combined, tlen + nlen);
 	free(combined);
 
-	*err = send_err_msg(rc);
+	*err = agent_err_msg(rc);
 	if (*err != NULL)
 		return NULL;
 
@@ -347,7 +349,7 @@ static cJSON *call_send_bytes(const AgentBackend *be, const cJSON *params, const
 	int rc = be->send_bytes(be->ctx, param_session(params), raw, rn);
 	free(raw);
 
-	*err = send_err_msg(rc);
+	*err = agent_err_msg(rc);
 	if (*err != NULL)
 		return NULL;
 
@@ -370,7 +372,7 @@ static cJSON *call_send_key(const AgentBackend *be, const cJSON *params, const c
 		return NULL;
 	}
 	int rc = be->send_bytes(be->ctx, param_session(params), seq, klen);
-	*err = send_err_msg(rc);
+	*err = agent_err_msg(rc);
 	if (*err != NULL)
 		return NULL;
 
