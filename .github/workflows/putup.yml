@@ -25,6 +25,10 @@ jobs:
         run: sh ci_scripts/check_sealed_tus.sh
       - name: Run host unit tests (ASan/UBSan)
         run: make -C tests/unit check
+      - name: PE differ unit tests
+        run: |
+          python3 -m pip install --break-system-packages --quiet pefile
+          python3 ci_scripts/pe_diff_test.py
 
   build:
     runs-on: ubuntu-latest
@@ -160,6 +164,11 @@ jobs:
 
       - name: Release-manifest gate (every shipped binary is built)
         run: sh ci_scripts/check_release_manifest.sh ${{ matrix.arch.dir }}
+
+      - name: PE structural self-check (right machine + GUI manifests)
+        run: |
+          python3 -m pip install --break-system-packages --quiet pefile
+          python3 ci_scripts/pe_diff.py selfcheck ${{ matrix.arch.dir }} --arch ${{ matrix.arch.name }}
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4

@@ -155,6 +155,19 @@ def extract(path):
 ASSERTED = ("machine", "subsystem", "is_dll", "sections", "imports", "exports",
             "resource_types", "has_version_info", "version_fixed")
 
+# Reference-free self-check spec (survives the eventual CMake/MSVC deletion).
+EXPECTED_MACHINE = {
+    "x86": "IMAGE_FILE_MACHINE_I386",
+    "x64": "IMAGE_FILE_MACHINE_AMD64",
+    "x86_64": "IMAGE_FILE_MACHINE_AMD64",  # alias for the putup.yml matrix name
+    "arm64": "IMAGE_FILE_MACHINE_ARM64",
+}
+
+# Shipped GUI apps that must carry an embedded manifest (DPI/UAC/comctl6) and
+# version info. Grounded in the real putup build -- the *_manifest.rc grep misses
+# ttpmenu, which nonetheless ships a manifest.
+MANIFEST_APPS = ("ttermpro.exe", "ttpmacro.exe", "ttpmenu.exe")
+
 
 def compare(a, b):
     """Return a list of human-readable strings, one per asserted-facet mismatch.
@@ -204,6 +217,29 @@ def _info_deltas(a, b):
         if a["_info"].get(k) != b["_info"].get(k):
             out.append(f"  ~ {k}: {a['_info'].get(k)!r} vs {b['_info'].get(k)!r}")
     return out
+
+
+def selfcheck(facets_by_name, arch):
+    """Reference-free structural check on a putup build: every binary carries the
+    arch's machine, and each shipped GUI app has a manifest + version info.
+    Takes {basename: facets} so it is trivially unit-testable. Returns violation
+    strings (empty == pass)."""
+    expected = EXPECTED_MACHINE[arch]
+    problems = []
+    for name in sorted(facets_by_name):
+        machine = facets_by_name[name]["machine"]
+        if machine != expected:
+            problems.append(f"{name}: machine {machine} != {expected}")
+    for app in MANIFEST_APPS:
+        f = facets_by_name.get(app)
+        if f is None:
+            problems.append(f"{app}: expected GUI app not found in tree")
+            continue
+        if not f["_info"]["has_manifest"]:
+            problems.append(f"{app}: missing embedded manifest")
+        if not f["has_version_info"]:
+            problems.append(f"{app}: missing version info")
+    return problems
 
 
 # --- CLI ---------------------------------------------------------------------
@@ -262,6 +298,23 @@ def cmd_diff_tree(args):
     return 1 if failed else 0
 
 
+def cmd_selfcheck(args):
+    paths = _pes_by_name(args.tree)
+    if not paths:
+        print(f"FAIL selfcheck: no .exe/.dll found under {args.tree}")
+        return 1
+    facets = {name: extract(path) for name, path in paths.items()}
+    problems = selfcheck(facets, args.arch)
+    if problems:
+        print(f"FAIL selfcheck ({args.arch}): {len(problems)} problem(s)")
+        for pr in problems:
+            print(f"  ! {pr}")
+        return 1
+    print(f"OK   selfcheck ({args.arch}): {len(facets)} binaries all {args.arch}; "
+          f"{', '.join(MANIFEST_APPS)} carry manifest + version info")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -282,6 +335,12 @@ def main(argv=None):
     pe_tr.add_argument("tree_a")
     pe_tr.add_argument("tree_b")
     pe_tr.set_defaults(func=cmd_diff_tree)
+
+    pe_sc = sub.add_parser("selfcheck",
+                           help="assert a putup build tree meets spec (no reference)")
+    pe_sc.add_argument("tree")
+    pe_sc.add_argument("--arch", required=True, choices=sorted(EXPECTED_MACHINE))
+    pe_sc.set_defaults(func=cmd_selfcheck)
 
     args = p.parse_args(argv)
     return args.func(args)
