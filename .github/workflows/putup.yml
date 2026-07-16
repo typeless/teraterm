@@ -114,6 +114,22 @@ jobs:
 
           rm -rf "$tmp"
 
+      # Supply-chain pin: the vendor step fetches version-tagged URLs but does not
+      # hash-verify. Pin each dependency by the SHA-256 of a content file inside it
+      # (the same CHECK_FILE hashes libs/download.cmake uses) -- these are
+      # URL-independent, so they hold whether the source came from the vendor step
+      # or the restored cache. Fail closed on any mismatch.
+      - name: Verify vendored dependency hashes
+        run: |
+          set -eu
+          pin() { printf '%s  libs/%s\n' "$2" "$1" | sha256sum -c -; }
+          pin oniguruma/HISTORY   bdf00b251fa9dfb2aea3e1c007a0994bd40203a56706402c7cebb976c41d0cae
+          pin SFMT/CHANGE-LOG.txt ac65302c740579c7dccc99b2fcd735af3027957680f2ce227042755646abb1db
+          pin zlib/ChangeLog      c6f42df0f27486db922d633e7a70757b56c6cd9f742f21af419d232649efbede
+          pin libressl/ChangeLog  f99c885d5318dc6357b4bb3563c0fb7ea536ff1734c67a436aa2532ebb4b5bd7
+          pin argon2/CHANGELOG.md 1b513eb6524f0a3ac5e182bf2713618ddd8f2616ebe6e090d647c49b3e7eb2ec
+          pin cJSON/CHANGELOG.md  4ff95e0060ea2dbc13720079399e77d404d89e514b569fcc8d741f3272c98e53
+
       - name: Build
         run: |
           export XWIN_SPLAT="$HOME/.xwin/splat"
