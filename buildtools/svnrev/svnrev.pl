@@ -3,6 +3,7 @@ use warnings;
 use utf8;
 use Getopt::Long 'GetOptions';
 use POSIX 'strftime';
+use File::Basename 'dirname';
 
 binmode STDOUT, ':encoding(utf8)';
 
@@ -10,7 +11,10 @@ my $tt_version_major = 0;
 my $tt_version_minor = 0;
 my $tt_version_patch = 0;
 my $tt_version_substr = "";
-my $tt_version_h = "../../teraterm/common/tt-version.h";
+# Resolve relative to this script's own location, not the caller's CWD, so the
+# version is read correctly whether svnrev.pl is invoked from buildtools/svnrev/
+# (the .bat/.cmake callers) or from the repo root (the putup lane).
+my $tt_version_h = dirname(__FILE__) . "/../../teraterm/common/tt-version.h";
 my $version;
 my $svn = "svn";
 my $git = "git";
