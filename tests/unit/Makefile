@@ -98,12 +98,11 @@ $(B)/vtparams_impl.o: $(TT)/vtparams.cpp $(TT)/vtparams.h | $(B)
 $(B)/vtparams: test_vtparams.cpp $(TT)/vtparams.h $(B)/vtparams_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
-# buffcell.c is compiled as C++ on this lane: in C mode ttcstd.h typedefs
-# char32_t as unsigned long (8 bytes on LP64), which would give the impl and
-# the C++ test different buff_char_t layouts. The native ttunittest lane
-# compiles it as genuine C, where the sizes agree.
-$(B)/buffcell_impl.o: $(TT)/buffcell.c $(TT)/buffcell.h $(CODECONV_H) | $(B)
-	$(CXX) $(CXXFLAGS) -x c++ -Iwinhost -I$(TT) -I$(COMMON) -c $< -o $@
+# buffcell is C++ now, so char32_t is the 4-byte builtin on both lanes and the
+# impl and the C++ test share one buff_char_t layout (previously the .c file had
+# to be force-compiled -x c++ here to avoid C-mode char32_t = unsigned long).
+$(B)/buffcell_impl.o: $(TT)/buffcell.cpp $(TT)/buffcell.h $(CODECONV_H) | $(B)
+	$(CXX) $(CXXFLAGS) -Iwinhost -I$(TT) -I$(COMMON) -c $< -o $@
 
 $(B)/buffcell: test_buffcell.cpp $(TT)/buffcell.h $(COMMON)/codeconv.cpp $(B)/buffcell_impl.o $(B)/winhost.o $(B)/catch_amalgamated.o $(CODECONV_H) | $(B)
 	$(CXX) $(CXXFLAGS) -Iwinhost -I$(TT) -I$(COMMON) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@

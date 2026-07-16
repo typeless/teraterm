@@ -417,7 +417,7 @@
     <ClCompile Include="addsetting.cpp" />
     <ClCompile Include="broadcast.cpp" />
     <ClCompile Include="buffer.c" />
-    <ClCompile Include="buffcell.c" />
+    <ClCompile Include="buffcell.cpp" />
     <ClCompile Include="charset.cpp" />
     <ClCompile Include="checkeol.cpp" />
     <ClCompile Include="clipboar.c" />

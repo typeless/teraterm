@@ -24,7 +24,7 @@ add_executable(
   broadcast.h
   buffer.c
   buffer.h
-  buffcell.c
+  buffcell.cpp
   buffcell.h
   charset.cpp
   charset.h
