@@ -133,3 +133,58 @@ jobs:
           path: |
             teraterm-${{ matrix.arch.name }}/
             teraterm-${{ matrix.arch.name }}_pdb/
+
+  # [2a] Build the two CHM help files on Windows (hhc is Windows-only). Arch-
+  # independent -- one set is shared by all three installers. Standalone (no
+  # dependency on stage-linux) so it verifies on its own.
+  chm:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe CHM toolchain
+        shell: cmd
+        run: |
+          echo --- perl --- & where perl
+          echo --- cmake --- & where cmake
+          if exist "%ProgramFiles(x86)%\HTML Help Workshop\hhc.exe" (echo hhc: FOUND ^(x86^)) else if exist "%ProgramFiles%\HTML Help Workshop\hhc.exe" (echo hhc: FOUND) else (echo hhc: MISSING)
+          exit /b 0
+
+      - name: Vendor third-party sources (convtext transcodes libs/*/COPYING)
+        shell: bash
+        run: |
+          set -eux
+          tmp="$(mktemp -d)"
+          get() { curl -fsSL "$1" -o "$tmp/$2"; }
+          merge() { mkdir -p "libs/$2" && cp -a "$tmp/$1/." "libs/$2/"; }
+          get https://github.com/kkos/oniguruma/releases/download/v6.9.10/onig-6.9.10.tar.gz onig.tgz
+          tar -xzf "$tmp/onig.tgz" -C "$tmp"; merge onig-6.9.10 oniguruma
+          get https://github.com/MersenneTwister-Lab/SFMT/archive/refs/tags/1.5.1.tar.gz sfmt.tgz
+          tar -xzf "$tmp/sfmt.tgz" -C "$tmp"; merge SFMT-1.5.1 SFMT
+          get https://github.com/madler/zlib/archive/refs/tags/v1.3.2.tar.gz zlib.tgz
+          tar -xzf "$tmp/zlib.tgz" -C "$tmp"; merge zlib-1.3.2 zlib
+          get https://github.com/libressl/portable/releases/download/v4.2.1/libressl-4.2.1.tar.gz libressl.tgz
+          tar -xzf "$tmp/libressl.tgz" -C "$tmp"; merge libressl-4.2.1 libressl
+          get https://github.com/P-H-C/phc-winner-argon2/archive/refs/tags/20190702.tar.gz argon2.tgz
+          tar -xzf "$tmp/argon2.tgz" -C "$tmp"; merge phc-winner-argon2-20190702 argon2
+          get https://github.com/DaveGamble/cJSON/archive/v1.7.14.zip cjson.zip
+          unzip -q "$tmp/cjson.zip" -d "$tmp"; merge cJSON-1.7.14 cJSON
+          rm -rf "$tmp"
+
+      - name: Install SBAppLocale (locale shim makechm wraps hhc with)
+        shell: cmd
+        working-directory: buildtools
+        run: install_sbapplocale.bat
+
+      - name: Build CHM (teraterm.chm + teratermj.chm)
+        shell: cmd
+        working-directory: doc
+        run: makechm.bat
+
+      - name: Upload CHM
+        uses: actions/upload-artifact@v4
+        with:
+          name: chm
+          path: |
+            doc/en/teraterm.chm
+            doc/ja/teratermj.chm
