@@ -102,15 +102,16 @@ jobs:
           unzip -q "$tmp/cjson.zip" -d "$tmp"; merge cJSON-1.7.14 cJSON
           rm -rf "$tmp"
 
-      - name: Build risk-representative targets (${{ matrix.arch }})
+      - name: Build ${{ matrix.arch }} (whole product cross-compile)
         run: |
           set -eux
           export XWIN_SPLAT="$HOME/.xwin/splat"
           B="build-${{ matrix.arch }}"
           putup configure --config ${{ matrix.config }} -B "$B"
-          targets="$B/teraterm/teraterm/ttermpro.exe $B/ttssh2/ttxssh/ttxssh.dll $B/tests/unit/ttunittest.exe"
-          # second pass converges cold-build lib dep ordering (see putup.yml)
-          putup -B "$B" $targets || putup -B "$B" $targets
+          # Full build (scans all Tupfiles then builds); a fresh build dir has no
+          # scanned target graph yet, so target-by-path fails until this runs. The
+          # second pass converges cold-build lib dep ordering (see putup.yml).
+          putup -B "$B" || putup -B "$B"
 
       - name: Verify PE machine == ${{ matrix.machine }}
         run: |
