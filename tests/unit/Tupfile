@@ -16,7 +16,7 @@ srcs_cpp += $(S)/teraterm/common/codeconv.cpp
 srcs_cpp += test_telnet_neg.cpp
 srcs_cpp += $(S)/teraterm/teraterm/telnet_neg.cpp
 srcs_cpp += test_buffcell.cpp
-srcs_c += $(S)/teraterm/teraterm/buffcell.c
+srcs_cpp += $(S)/teraterm/teraterm/buffcell.cpp
 srcs_cpp += test_vtparams.cpp
 srcs_cpp += $(S)/teraterm/teraterm/vtparams.cpp
 

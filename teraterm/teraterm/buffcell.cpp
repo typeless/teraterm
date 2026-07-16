@@ -4,17 +4,22 @@
  *
  * Pure cell layer of the VT screen buffer, moved verbatim from buffer.c.
  * See buffcell.h.
+ *
+ * Modernized to the house C++23 conventions (anonymous-namespace internal
+ * linkage, trailing return types, left-bound pointers, static_cast over C
+ * casts). The public surface keeps C linkage and a C-compatible header because
+ * buffer.c (still C) calls it.
  */
-#include <assert.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cassert>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 
 #include "codeconv.h"
 
 #include "buffcell.h"
 
-buff_char_t *CellPtrRel(buff_char_t *base, size_t buffer_size, buff_char_t *p, int rel)
+auto CellPtrRel(buff_char_t* base, size_t buffer_size, buff_char_t* p, int rel) -> buff_char_t*
 {
 	ptrdiff_t idx = (ptrdiff_t)(p - base) + rel;
 	for (;;) {
@@ -32,42 +37,46 @@ buff_char_t *CellPtrRel(buff_char_t *base, size_t buffer_size, buff_char_t *p, i
 	return p;
 }
 
-void CellFreeCombination(buff_char_t *b)
+auto CellFreeCombination(buff_char_t* b) -> void
 {
-	if (b->pCombinationChars16 != NULL) {
+	if (b->pCombinationChars16 != nullptr) {
 		free(b->pCombinationChars16);
-		b->pCombinationChars16 = NULL;
+		b->pCombinationChars16 = nullptr;
 	}
 	b->CombinationCharSize16 = 0;
 	b->CombinationCharCount16 = 0;
 
-	if (b->pCombinationChars32 != NULL) {
+	if (b->pCombinationChars32 != nullptr) {
 		free(b->pCombinationChars32);
-		b->pCombinationChars32 = NULL;
+		b->pCombinationChars32 = nullptr;
 	}
 	b->CombinationCharSize32 = 0;
 	b->CombinationCharCount32 = 0;
 }
 
-static void DupCombinationBuf(buff_char_t *b)
+namespace {
+
+auto DupCombinationBuf(buff_char_t* b) -> void
 {
 	size_t size;
 
 	size = b->CombinationCharSize16;
 	if (size > 0) {
-		wchar_t *new_buf = (wchar_t *)malloc(sizeof(wchar_t) * size);
+		auto* new_buf = static_cast<wchar_t*>(malloc(sizeof(wchar_t) * size));
 		memcpy(new_buf, b->pCombinationChars16, sizeof(wchar_t) * size);
 		b->pCombinationChars16 = new_buf;
 	}
 	size = b->CombinationCharSize32;
 	if (size > 0) {
-		char32_t *new_buf = (char32_t *)malloc(sizeof(char32_t) * size);
+		auto* new_buf = static_cast<char32_t*>(malloc(sizeof(char32_t) * size));
 		memcpy(new_buf, b->pCombinationChars32, sizeof(char32_t) * size);
 		b->pCombinationChars32 = new_buf;
 	}
 }
 
-void CellCopy(buff_char_t *dest, const buff_char_t *src)
+} // namespace
+
+auto CellCopy(buff_char_t* dest, buff_char_t const* src) -> void
 {
 	CellFreeCombination(dest);
 
@@ -83,11 +92,11 @@ void CellCopy(buff_char_t *dest, const buff_char_t *src)
 	DupCombinationBuf(dest);
 }
 
-void CellSetChar2(buff_char_t *cell, char32_t u32, char property, int half_width, char emoji,
-                  CellToMB to_mb, void *to_mb_ctx)
+auto CellSetChar2(buff_char_t* cell, char32_t u32, char property, int half_width, char emoji,
+                  CellToMB to_mb, void* to_mb_ctx) -> void
 {
 	size_t wstr_len;
-	buff_char_t *p = cell;
+	buff_char_t* p = cell;
 
 	CellFreeCombination(p);
 	p->WidthProperty = property;
@@ -135,11 +144,11 @@ void CellSetChar2(buff_char_t *cell, char32_t u32, char property, int half_width
 	}
 }
 
-void CellSetChar4(buff_char_t *cell, char32_t u32, unsigned char fg, unsigned char bg,
+auto CellSetChar4(buff_char_t* cell, char32_t u32, unsigned char fg, unsigned char bg,
                   unsigned char attr, unsigned char attr2, char property,
-                  CellToMB to_mb, void *to_mb_ctx)
+                  CellToMB to_mb, void* to_mb_ctx) -> void
 {
-	buff_char_t *p = cell;
+	buff_char_t* p = cell;
 	CellSetChar2(p, u32, property, 1, 0, to_mb, to_mb_ctx);
 	p->fg = fg;
 	p->bg = bg;
@@ -147,7 +156,7 @@ void CellSetChar4(buff_char_t *cell, char32_t u32, unsigned char fg, unsigned ch
 	p->attr2 = attr2;
 }
 
-void CellSetChar(buff_char_t *cell, char32_t u32, char property, CellToMB to_mb, void *to_mb_ctx)
+auto CellSetChar(buff_char_t* cell, char32_t u32, char property, CellToMB to_mb, void* to_mb_ctx) -> void
 {
 	CellSetChar2(cell, u32, property, 1, 0, to_mb, to_mb_ctx);
 }
@@ -155,9 +164,9 @@ void CellSetChar(buff_char_t *cell, char32_t u32, char property, CellToMB to_mb,
 /**
  *	文字の追加、コンビネーション
  */
-void CellAddChar(buff_char_t *cell, char32_t u32)
+auto CellAddChar(buff_char_t* cell, char32_t u32) -> void
 {
-	buff_char_t *p = cell;
+	buff_char_t* p = cell;
 	assert(p->u32 != 0);
 	// 後に続く文字領域を拡大する
 	if (p->CombinationCharSize16 < p->CombinationCharCount16 + 2) {
@@ -167,7 +176,7 @@ void CellAddChar(buff_char_t *cell, char32_t u32)
 			new_size = MAX_CHAR_SIZE;
 		}
 		if (p->CombinationCharSize16 != new_size) {
-			p->pCombinationChars16 = (wchar_t *)realloc(p->pCombinationChars16, sizeof(wchar_t) * new_size);
+			p->pCombinationChars16 = static_cast<wchar_t*>(realloc(p->pCombinationChars16, sizeof(wchar_t) * new_size));
 			p->CombinationCharSize16 = (char)new_size;
 		}
 	}
@@ -178,7 +187,7 @@ void CellAddChar(buff_char_t *cell, char32_t u32)
 			new_size = MAX_CHAR_SIZE;
 		}
 		if (p->CombinationCharSize32 != new_size) {
-			p->pCombinationChars32 = (char32_t *)realloc(p->pCombinationChars32, sizeof(char32_t) * new_size);
+			p->pCombinationChars32 = static_cast<char32_t*>(realloc(p->pCombinationChars32, sizeof(char32_t) * new_size));
 			p->CombinationCharSize32 = (char)new_size;
 		}
 	}
@@ -206,7 +215,7 @@ void CellAddChar(buff_char_t *cell, char32_t u32)
 	}
 }
 
-void CellsCopy(buff_char_t *dest, const buff_char_t *src, size_t count)
+auto CellsCopy(buff_char_t* dest, buff_char_t const* src, size_t count) -> void
 {
 	size_t i;
 
@@ -221,9 +230,9 @@ void CellsCopy(buff_char_t *dest, const buff_char_t *src, size_t count)
 	}
 }
 
-void CellsFill(buff_char_t *dest, wchar_t ch, unsigned char fg, unsigned char bg,
+auto CellsFill(buff_char_t* dest, wchar_t ch, unsigned char fg, unsigned char bg,
                unsigned char attr, unsigned char attr2, size_t count,
-               CellToMB to_mb, void *to_mb_ctx)
+               CellToMB to_mb, void* to_mb_ctx) -> void
 {
 	size_t i;
 	for (i=0; i<count; i++) {
@@ -236,7 +245,7 @@ void CellsFill(buff_char_t *dest, wchar_t ch, unsigned char fg, unsigned char bg
 	}
 }
 
-void CellsMove(buff_char_t *dest, const buff_char_t *src, size_t count)
+auto CellsMove(buff_char_t* dest, buff_char_t const* src, size_t count) -> void
 {
 	size_t i;
 
@@ -261,7 +270,7 @@ void CellsMove(buff_char_t *dest, const buff_char_t *src, size_t count)
 	}
 }
 
-int CellIsPadding(const buff_char_t *cell)
+auto CellIsPadding(buff_char_t const* cell) -> int
 {
 	if (cell->Padding == 1)
 		return 1;
@@ -270,7 +279,7 @@ int CellIsPadding(const buff_char_t *cell)
 	return 0;
 }
 
-int CellIsFullWidth(const buff_char_t *cell)
+auto CellIsFullWidth(buff_char_t const* cell) -> int
 {
 	if (cell->cell != 1)
 		return 1;
@@ -287,13 +296,13 @@ int CellIsFullWidth(const buff_char_t *cell)
  *	@retval			文字数		出力文字数
  *								0のとき、文字出力なし
  */
-size_t CellExpandWchar(const buff_char_t *cell, wchar_t *buf, size_t buf_size, int *too_small)
+auto CellExpandWchar(buff_char_t const* cell, wchar_t* buf, size_t buf_size, int* too_small) -> size_t
 {
-	const buff_char_t *b = cell;
+	buff_char_t const* b = cell;
 	size_t len;
 
 	if (CellIsPadding(b)) {
-		if (too_small != NULL) {
+		if (too_small != nullptr) {
 			*too_small = 0;
 		}
 		return 0;
@@ -311,7 +320,7 @@ size_t CellExpandWchar(const buff_char_t *cell, wchar_t *buf, size_t buf_size, i
 	// コンビネーション
 	len += b->CombinationCharCount16;
 
-	if (buf == NULL) {
+	if (buf == nullptr) {
 		// 長さだけを返す
 		return len;
 	}
@@ -319,12 +328,12 @@ size_t CellExpandWchar(const buff_char_t *cell, wchar_t *buf, size_t buf_size, i
 	// バッファに収まる?
 	if (len > buf_size) {
 		// バッファに収まらない
-		if (too_small != NULL) {
+		if (too_small != nullptr) {
 			*too_small = 1;
 		}
 		return len;
 	}
-	if (too_small != NULL) {
+	if (too_small != nullptr) {
 		*too_small = 0;
 	}
 

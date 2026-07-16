@@ -57,7 +57,7 @@
     <ClCompile Include="buffer.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
-    <ClCompile Include="buffcell.c">
+    <ClCompile Include="buffcell.cpp">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
     <ClCompile Include="clipboar.c">
