@@ -159,12 +159,19 @@ void DispGetFontSize(vtdraw_t *vt, int *width, int *height);
 void DispSetFontSize(vtdraw_t *vt, int width, int height);
 void DispGetScreenSize(vtdraw_t *vt, int *width, int *height);
 
-extern int WinWidth, WinHeight;
 extern BOOL AdjustSize, DontChangeSize;
-extern int CursorX, CursorY;
-extern int WinOrgX, WinOrgY, NewOrgX, NewOrgY;
-extern int NumOfLines, NumOfColumns;
-extern int PageStart, BuffEnd;
+// Terminal geometry: the single owner for the cursor position, the window
+// origin, the visible/buffered line counts, and the page window. Consolidated
+// from 12 scattered globals; access is still direct (geom.CursorX) pending an
+// accessor pass.
+typedef struct {
+	int WinWidth, WinHeight;
+	int CursorX, CursorY;
+	int WinOrgX, WinOrgY, NewOrgX, NewOrgY;
+	int NumOfLines, NumOfColumns;
+	int PageStart, BuffEnd;
+} TermGeometry;
+extern TermGeometry geom;
 extern TCharAttr DefCharAttr;
 
 extern BOOL IMEstat;

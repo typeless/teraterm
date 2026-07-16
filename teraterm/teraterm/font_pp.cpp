@@ -293,7 +293,7 @@ static INT_PTR CALLBACK Proc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 						SetWindowPos(vtwin, NULL, 0, 0, r.right - r.left, 0, SWP_NOMOVE);
 						SetWindowPos(vtwin, NULL, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE);
 					} else {
-						DispChangeWinSize(vt_src, WinWidth, WinHeight);
+						DispChangeWinSize(vt_src, geom.WinWidth, geom.WinHeight);
 					}
 					ChangeCaret(vt_src);
 

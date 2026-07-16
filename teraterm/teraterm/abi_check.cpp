@@ -14,14 +14,22 @@
  * gate the constants on the architecture.
  */
 #include <stddef.h>
+#include <type_traits>
 
 #include "teraterm.h"
 #include "tttypes.h"
 #include "ttplugin.h"
+#include "vtdisp.h"
 
 static_assert(sizeof(TTTSet) == 10632, "TTTSet layout changed; see note above");
 static_assert(sizeof(TComVar) == 98768, "TComVar layout changed; see note above");
 static_assert(sizeof(TTXExports) == 112, "TTXExports layout changed; see note above");
+
+/* The single terminal-geometry owner (vtdisp.h) is shared across C and C++ TUs
+ * by value, so its layout must stay a plain 12-int aggregate — a later accessor
+ * pass must not perturb it. */
+static_assert(std::is_standard_layout<TermGeometry>::value, "TermGeometry must stay standard-layout");
+static_assert(sizeof(TermGeometry) == 12 * sizeof(int), "TermGeometry must stay 12 ints, no padding");
 
 /* Sentinel offsets catch a same-size field reorder that the sizeof checks miss. */
 static_assert(offsetof(TTXExports, size) == 0, "TTXExports.size moved");

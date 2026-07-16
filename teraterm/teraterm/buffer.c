@@ -87,7 +87,7 @@ static POINT DblClkStart;
 static POINT DblClkEnd;
 
 // 描画
-static int StrChangeStart;	// 描画開始 X (Y=CursorY)
+static int StrChangeStart;	// 描画開始 X (Y=geom.CursorY)
 static int StrChangeCount;	// 描画キャラクタ数(半角単位),0のとき描画するものがない
 static BOOL UseUnicodeApi;
 
@@ -153,7 +153,7 @@ static LONG GetLinePtr(int Line)
 {
 	LONG Ptr;
 
-	Ptr = (LONG)(BuffStartAbs + Line) * (LONG)(NumOfColumns);
+	Ptr = (LONG)(BuffStartAbs + Line) * (LONG)(geom.NumOfColumns);
 	while (Ptr>=BufferSize) {
 		Ptr = Ptr - BufferSize;
 	}
@@ -162,7 +162,7 @@ static LONG GetLinePtr(int Line)
 
 static LONG NextLinePtr(LONG Ptr)
 {
-	Ptr = Ptr + (LONG)NumOfColumns;
+	Ptr = Ptr + (LONG)geom.NumOfColumns;
 	if (Ptr >= BufferSize) {
 		Ptr = Ptr - BufferSize;
 	}
@@ -171,7 +171,7 @@ static LONG NextLinePtr(LONG Ptr)
 
 static LONG PrevLinePtr(LONG Ptr)
 {
-	Ptr = Ptr - (LONG)NumOfColumns;
+	Ptr = Ptr - (LONG)geom.NumOfColumns;
 	if (Ptr < 0) {
 		Ptr = Ptr + BufferSize;
 	}
@@ -184,8 +184,8 @@ static LONG PrevLinePtr(LONG Ptr)
 static void GetPosFromPtr(const buff_char_t *b, int *bx, int *by)
 {
 	size_t index = b - CodeBuffW;
-	int x = (int)(index % NumOfColumns);
-	int y = (int)(index / NumOfColumns);
+	int x = (int)(index % geom.NumOfColumns);
+	int y = (int)(index / geom.NumOfColumns);
 	if (y >= BuffStartAbs) {
 		y -= BuffStartAbs;
 	}
@@ -207,15 +207,15 @@ static void GetPosFromPtr(const buff_char_t *b, int *bx, int *by)
 static int ComparePoint(const POINT *p1, const POINT *p2)
 {
 	if (p1->y < p2->y) {
-		int len = (p2->y - p1->y - 1) * NumOfColumns;
-		len += NumOfColumns - p1->x;
+		int len = (p2->y - p1->y - 1) * geom.NumOfColumns;
+		len += geom.NumOfColumns - p1->x;
 		len += p2->x;
 		return -len;
 	}
 	else if (p1->y > p2->y) {
-		int len = (p1->y - p2->y - 1) * NumOfColumns;
+		int len = (p1->y - p2->y - 1) * geom.NumOfColumns;
 		len += p1->x;
-		len += NumOfColumns - p2->x;
+		len += geom.NumOfColumns - p2->x;
 		return len;
 	}
 	else {
@@ -276,22 +276,22 @@ static BOOL ChangeBuffer(int Nx, int Ny)
 #endif
 	memsetW(&CodeDestW[0], 0x20, AttrDefaultFG, AttrDefaultBG, AttrDefault, AttrDefault, NewSize);
 	if ( CodeBuffW != NULL ) {
-		if ( NumOfColumns > Nx ) {
+		if ( geom.NumOfColumns > Nx ) {
 			NxCopy = Nx;
 		}
 		else {
-			NxCopy = NumOfColumns;
+			NxCopy = geom.NumOfColumns;
 		}
 
-		if ( BuffEnd > Ny ) {
+		if ( geom.BuffEnd > Ny ) {
 			NyCopy = Ny;
 		}
 		else {
-			NyCopy = BuffEnd;
+			NyCopy = geom.BuffEnd;
 		}
 		LockOld = BuffLock;
 		LockBuffer();
-		SrcPtr = GetLinePtr(BuffEnd-NyCopy);
+		SrcPtr = GetLinePtr(geom.BuffEnd-NyCopy);
 		DestPtr = 0;
 		for (i = 1 ; i <= NyCopy ; i++) {
 			CellsCopy(&CodeDestW[DestPtr],&CodeBuffW[SrcPtr],NxCopy);
@@ -306,13 +306,13 @@ static BOOL ChangeBuffer(int Nx, int Ny)
 	}
 	else {
 		LockOld = 0;
-		NyCopy = NumOfLines;
+		NyCopy = geom.NumOfLines;
 		Selected = FALSE;
 	}
 
 	if (Selected) {
-		SelectStart.y = SelectStart.y - BuffEnd + NyCopy;
-		SelectEnd.y = SelectEnd.y - BuffEnd + NyCopy;
+		SelectStart.y = SelectStart.y - geom.BuffEnd + NyCopy;
+		SelectEnd.y = SelectEnd.y - geom.BuffEnd + NyCopy;
 		if (SelectStart.y < 0) {
 			SelectStart.y = 0;
 			SelectStart.x = 0;
@@ -333,16 +333,16 @@ static BOOL ChangeBuffer(int Nx, int Ny)
 	BufferSize = NewSize;
 	NumOfLinesInBuff = Ny;
 	BuffStartAbs = 0;
-	BuffEnd = NyCopy;
+	geom.BuffEnd = NyCopy;
 
-	if (BuffEnd==NumOfLinesInBuff) {
+	if (geom.BuffEnd==NumOfLinesInBuff) {
 		BuffEndAbs = 0;
 	}
 	else {
-		BuffEndAbs = BuffEnd;
+		BuffEndAbs = geom.BuffEnd;
 	}
 
-	PageStart = BuffEnd - NumOfLines;
+	geom.PageStart = geom.BuffEnd - geom.NumOfLines;
 
 	LinePtr = 0;
 	if (LockOld>0) {
@@ -370,33 +370,33 @@ void InitBuffer(IdVtDrawAPI draw_api, const BuffOp *op)
 	UseUnicodeApi = draw_api == IdVtDrawAPIUnicode ? TRUE : FALSE;
 
 	/* setup terminal */
-	NumOfColumns = cfg.TerminalWidth;
-	NumOfLines = cfg.TerminalHeight;
+	geom.NumOfColumns = cfg.TerminalWidth;
+	geom.NumOfLines = cfg.TerminalHeight;
 
-	if (NumOfColumns <= 0)
-		NumOfColumns = 80;
-	else if (NumOfColumns > TermWidthMax)
-		NumOfColumns = TermWidthMax;
+	if (geom.NumOfColumns <= 0)
+		geom.NumOfColumns = 80;
+	else if (geom.NumOfColumns > TermWidthMax)
+		geom.NumOfColumns = TermWidthMax;
 
-	if (NumOfLines <= 0)
-		NumOfLines = 24;
-	else if (NumOfLines > TermHeightMax)
-		NumOfLines = TermHeightMax;
+	if (geom.NumOfLines <= 0)
+		geom.NumOfLines = 24;
+	else if (geom.NumOfLines > TermHeightMax)
+		geom.NumOfLines = TermHeightMax;
 
 	/* setup window */
 	if (cfg.EnableScrollBuff>0) {
 		LONG scroll_buff_size = cfg.ScrollBuffSize;
-		if (scroll_buff_size < NumOfLines) {
-			scroll_buff_size = NumOfLines;
+		if (scroll_buff_size < geom.NumOfLines) {
+			scroll_buff_size = geom.NumOfLines;
 			Op.SetScrollBuffSize(scroll_buff_size);
 		}
 		Ny = scroll_buff_size;
 	}
 	else {
-		Ny = NumOfLines;
+		Ny = geom.NumOfLines;
 	}
 
-	if (! ChangeBuffer(NumOfColumns,Ny)) {
+	if (! ChangeBuffer(geom.NumOfColumns,Ny)) {
 		PostQuitMessage(0);
 	}
 
@@ -418,7 +418,7 @@ void LockBuffer(void)
 	if (BuffLock>1) {
 		return;
 	}
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 }
 
 void UnlockBuffer(void)
@@ -436,7 +436,7 @@ void FreeBuffer(void)
 {
 	int i;
 
-	for (i = 0; i < NumOfColumns * NumOfLinesInBuff; i++) {
+	for (i = 0; i < geom.NumOfColumns * NumOfLinesInBuff; i++) {
 		CellFreeCombination(&CodeBuffW[i]);
 	}
 
@@ -453,9 +453,9 @@ void BuffAllSelect(void)
 	SelectStart.x = 0;
 	SelectStart.y = 0;
 	SelectEnd.x = 0;
-	SelectEnd.y = BuffEnd;
-//	SelectEnd.x = NumOfColumns;
-//	SelectEnd.y = BuffEnd - 1;
+	SelectEnd.y = geom.BuffEnd;
+//	SelectEnd.x = geom.NumOfColumns;
+//	SelectEnd.y = geom.BuffEnd - 1;
 	Selecting = TRUE;
 	ChangeSelectRegion();
 }
@@ -465,11 +465,11 @@ void BuffScreenSelect(void)
 	int X, Y;
 	DispConvWinToScreen(vt_src, 0, 0, &X, &Y, NULL);
 	SelectStart.x = X;
-	SelectStart.y = Y + PageStart;
+	SelectStart.y = Y + geom.PageStart;
 	SelectEnd.x = 0;
-	SelectEnd.y = SelectStart.y + NumOfLines;
-//	SelectEnd.x = X + NumOfColumns;
-//	SelectEnd.y = Y + PageStart + NumOfLines - 1;
+	SelectEnd.y = SelectStart.y + geom.NumOfLines;
+//	SelectEnd.x = X + geom.NumOfColumns;
+//	SelectEnd.y = Y + geom.PageStart + geom.NumOfLines - 1;
 	Selecting = TRUE;
 	ChangeSelectRegion();
 }
@@ -490,20 +490,20 @@ void BuffReset(void)
 	int i;
 
 	/* Cursor */
-	NewLine(PageStart);
-	WinOrgX = 0;
-	WinOrgY = 0;
-	NewOrgX = 0;
-	NewOrgY = 0;
+	NewLine(geom.PageStart);
+	geom.WinOrgX = 0;
+	geom.WinOrgY = 0;
+	geom.NewOrgX = 0;
+	geom.NewOrgY = 0;
 
 	/* Top/bottom margin */
 	CursorTop = 0;
-	CursorBottom = NumOfLines-1;
+	CursorBottom = geom.NumOfLines-1;
 	CursorLeftM = 0;
-	CursorRightM = NumOfColumns-1;
+	CursorRightM = geom.NumOfColumns-1;
 
 	/* Tab stops */
-	NTabStops = (NumOfColumns-1) >> 3;
+	NTabStops = (geom.NumOfColumns-1) >> 3;
 	for (i=1 ; i<=NTabStops ; i++) {
 		TabStops[i-1] = (WORD)(i*8);
 	}
@@ -534,13 +534,13 @@ static void BuffScroll(int Count, int Bottom)
 		Count = NumOfLinesInBuff;
 	}
 
-	DestPtr = GetLinePtr(PageStart+NumOfLines-1+Count);
+	DestPtr = GetLinePtr(geom.PageStart+geom.NumOfLines-1+Count);
 	n = Count;
-	if (Bottom<NumOfLines-1) {
-		SrcPtr = GetLinePtr(PageStart+NumOfLines-1);
-		for (i=NumOfLines-1; i>=Bottom+1; i--) {
-			CellsCopy(&(CodeBuffW[DestPtr]),&(CodeBuffW[SrcPtr]),NumOfColumns);
-			memsetW(&(CodeBuffW[SrcPtr]),0x20,CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, NumOfColumns);
+	if (Bottom<geom.NumOfLines-1) {
+		SrcPtr = GetLinePtr(geom.PageStart+geom.NumOfLines-1);
+		for (i=geom.NumOfLines-1; i>=Bottom+1; i--) {
+			CellsCopy(&(CodeBuffW[DestPtr]),&(CodeBuffW[SrcPtr]),geom.NumOfColumns);
+			memsetW(&(CodeBuffW[SrcPtr]),0x20,CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, geom.NumOfColumns);
 			SrcPtr = PrevLinePtr(SrcPtr);
 			DestPtr = PrevLinePtr(DestPtr);
 			n--;
@@ -548,7 +548,7 @@ static void BuffScroll(int Count, int Bottom)
 	}
 	for (i = 1 ; i <= n ; i++) {
 		buff_char_t *b = &CodeBuffW[DestPtr];
-		memsetW(b ,0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, NumOfColumns);
+		memsetW(b ,0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, geom.NumOfColumns);
 		DestPtr = PrevLinePtr(DestPtr);
 	}
 
@@ -556,17 +556,17 @@ static void BuffScroll(int Count, int Bottom)
 	if (BuffEndAbs >= NumOfLinesInBuff) {
 		BuffEndAbs = BuffEndAbs - NumOfLinesInBuff;
 	}
-	BuffEndOld = BuffEnd;
-	BuffEnd = BuffEnd + Count;
-	if (BuffEnd >= NumOfLinesInBuff) {
-		BuffEnd = NumOfLinesInBuff;
+	BuffEndOld = geom.BuffEnd;
+	geom.BuffEnd = geom.BuffEnd + Count;
+	if (geom.BuffEnd >= NumOfLinesInBuff) {
+		geom.BuffEnd = NumOfLinesInBuff;
 		BuffStartAbs = BuffEndAbs;
 	}
-	PageStart = BuffEnd-NumOfLines;
+	geom.PageStart = geom.BuffEnd-geom.NumOfLines;
 
 	if (Selected) {
-		SelectStart.y = SelectStart.y - Count + BuffEnd - BuffEndOld;
-		SelectEnd.y = SelectEnd.y - Count + BuffEnd - BuffEndOld;
+		SelectStart.y = SelectStart.y - Count + geom.BuffEnd - BuffEndOld;
+		SelectEnd.y = SelectEnd.y - Count + geom.BuffEnd - BuffEndOld;
 		if ( SelectStart.y<0 ) {
 			SelectStart.x = 0;
 			SelectStart.y = 0;
@@ -582,7 +582,7 @@ static void BuffScroll(int Count, int Bottom)
 		}
 	}
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 }
 
 /**
@@ -601,11 +601,11 @@ static int EraseKanji(int LR)
 	int bx;
 	int cell = 0;
 
-	if (CursorX < LR) {
+	if (geom.CursorX < LR) {
 		// 全角判定できない
 		return 0;
 	}
-	bx = CursorX-LR;
+	bx = geom.CursorX-LR;
 	p = &CodeLineW[bx];
 	if (CellIsFullWidth(p)) {
 		// 全角をつぶす
@@ -614,7 +614,7 @@ static int EraseKanji(int LR)
 		p->attr2 = CurCharAttr.Attr2;
 		p->fg = CurCharAttr.Fore;
 		p->bg = CurCharAttr.Back;
-		if (bx+1 < NumOfColumns) {
+		if (bx+1 < geom.NumOfColumns) {
 			BuffSetChar(p + 1, ' ', 'H');
 			(p+1)->attr = CurCharAttr.Attr;
 			(p+1)->attr2 = CurCharAttr.Attr2;
@@ -647,7 +647,7 @@ static void EraseKanjiOnLRMargin(LONG ptr, int count)
 			CodeBuffW[pos].attr &= ~AttrKanji;
 		}
 		pos = ptr + CursorRightM;
-		if (CursorRightM < NumOfColumns-1 && (CodeBuffW[pos].attr & AttrKanji)) {
+		if (CursorRightM < geom.NumOfColumns-1 && (CodeBuffW[pos].attr & AttrKanji)) {
 			BuffSetChar(&CodeBuffW[pos], 0x20, 'H');
 			CodeBuffW[pos].attr &= ~AttrKanji;
 			pos++;
@@ -668,13 +668,13 @@ void BuffInsertSpace(int Count)
 	int sx;
 	buff_char_t *b;
 
-	if (CursorX < CursorLeftM || CursorX > CursorRightM)
+	if (geom.CursorX < CursorLeftM || geom.CursorX > CursorRightM)
 		return;
 
-	NewLine(PageStart + CursorY);
+	NewLine(geom.PageStart + geom.CursorY);
 
-	sx = CursorX;
-	b = &CodeLineW[CursorX];
+	sx = geom.CursorX;
+	b = &CodeLineW[geom.CursorX];
 	if (CellIsPadding(b)) {
 		/* if cursor is on right half of a kanji, erase the kanji */
 		BuffSetChar(b - 1, ' ', 'H');
@@ -684,28 +684,28 @@ void BuffInsertSpace(int Count)
 		extr++;
 	}
 
-	if (CursorRightM < NumOfColumns - 1 && (CodeLineW[CursorRightM].attr & AttrKanji)) {
+	if (CursorRightM < geom.NumOfColumns - 1 && (CodeLineW[CursorRightM].attr & AttrKanji)) {
 		BuffSetChar(&CodeLineW[CursorRightM + 1], 0x20, 'H');
 		CodeLineW[CursorRightM + 1].attr &= ~AttrKanji;
 		extr++;
 	}
 
-	if (Count > CursorRightM + 1 - CursorX)
-		Count = CursorRightM + 1 - CursorX;
+	if (Count > CursorRightM + 1 - geom.CursorX)
+		Count = CursorRightM + 1 - geom.CursorX;
 
-	MoveLen = CursorRightM + 1 - CursorX - Count;
+	MoveLen = CursorRightM + 1 - geom.CursorX - Count;
 
 	if (MoveLen > 0) {
-		CellsMove(&(CodeLineW[CursorX + Count]), &(CodeLineW[CursorX]), MoveLen);
+		CellsMove(&(CodeLineW[geom.CursorX + Count]), &(CodeLineW[geom.CursorX]), MoveLen);
 	}
-	memsetW(&(CodeLineW[CursorX]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2, Count);
+	memsetW(&(CodeLineW[geom.CursorX]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2, Count);
 	/* last char in current line is kanji first? */
 	if ((CodeLineW[CursorRightM].attr & AttrKanji) != 0) {
 		/* then delete it */
 		BuffSetChar(&CodeLineW[CursorRightM], 0x20, 'H');
 		CodeLineW[CursorRightM].attr &= ~AttrKanji;
 	}
-	BuffUpdateRect(sx, CursorY, CursorRightM + extr, CursorY);
+	BuffUpdateRect(sx, geom.CursorY, CursorRightM + extr, geom.CursorY);
 }
 
 /**
@@ -716,22 +716,22 @@ void BuffEraseCurToEnd(void)
 	LONG TmpPtr;
 	int offset;
 	int i, YEnd;
-	int XStart = CursorX;
+	int XStart = geom.CursorX;
 	int head = 0;
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 	/* if cursor is on right half of a kanji, erase the kanji */
 	if (EraseKanji(1) != 0) {
 		head = 1;
 	}
-	offset = CursorX;
-	TmpPtr = GetLinePtr(PageStart+CursorY);
-	YEnd = NumOfLines-1;
+	offset = geom.CursorX;
+	TmpPtr = GetLinePtr(geom.PageStart+geom.CursorY);
+	YEnd = geom.NumOfLines-1;
 	if (StatusLine && !isCursorOnStatusLine) {
 		YEnd--;
 	}
-	for (i = CursorY ; i <= YEnd ; i++) {
-		memsetW(&(CodeBuffW[TmpPtr+offset]),0x20,CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, NumOfColumns-offset);
+	for (i = geom.CursorY ; i <= YEnd ; i++) {
+		memsetW(&(CodeBuffW[TmpPtr+offset]),0x20,CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, geom.NumOfColumns-offset);
 		offset = 0;
 		TmpPtr = NextLinePtr(TmpPtr);
 	}
@@ -741,9 +741,9 @@ void BuffEraseCurToEnd(void)
 		XStart--;
 	}
 	ttdc_t *dc = DispInitDC(vt_src);
-	BuffDrawLineI(vt_src, dc, CursorY + PageStart, XStart, NumOfColumns);
-	for (i = CursorY + 1; i <= YEnd; i++) {
-		BuffDrawLineI(vt_src, dc, i + PageStart, 0, NumOfColumns);
+	BuffDrawLineI(vt_src, dc, geom.CursorY + geom.PageStart, XStart, geom.NumOfColumns);
+	for (i = geom.CursorY + 1; i <= YEnd; i++) {
+		BuffDrawLineI(vt_src, dc, i + geom.PageStart, 0, geom.NumOfColumns);
 	}
 	DispReleaseDC(vt_src, dc);
 }
@@ -759,22 +759,22 @@ void BuffEraseHomeToCur(void)
 	int tail = 0;
 	int draw_len;
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 	/* if cursor is on left half of a kanji, erase the kanji */
 	if (EraseKanji(0) != 0) {
 		tail++;
 	}
-	offset = NumOfColumns;
+	offset = geom.NumOfColumns;
 	if (isCursorOnStatusLine) {
-		YHome = CursorY;
+		YHome = geom.CursorY;
 	}
 	else {
 		YHome = 0;
 	}
-	TmpPtr = GetLinePtr(PageStart+YHome);
-	for (i = YHome ; i <= CursorY ; i++) {
-		if (i==CursorY) {
-			offset = CursorX+1;
+	TmpPtr = GetLinePtr(geom.PageStart+YHome);
+	for (i = YHome ; i <= geom.CursorY ; i++) {
+		if (i==geom.CursorY) {
+			offset = geom.CursorX+1;
 		}
 		memsetW(&(CodeBuffW[TmpPtr]),0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, offset);
 		TmpPtr = NextLinePtr(TmpPtr);
@@ -782,11 +782,11 @@ void BuffEraseHomeToCur(void)
 
 	/* update window */
 	ttdc_t *dc = DispInitDC(vt_src);
-	draw_len = tail == 0 ? CursorX : CursorX + 1;
-	for (i = YHome; i < CursorY; i++) {
-		BuffDrawLineI(vt_src, dc, i + PageStart, 0, NumOfColumns);
+	draw_len = tail == 0 ? geom.CursorX : geom.CursorX + 1;
+	for (i = YHome; i < geom.CursorY; i++) {
+		BuffDrawLineI(vt_src, dc, i + geom.PageStart, 0, geom.NumOfColumns);
 	}
-	BuffDrawLineI(vt_src, dc, CursorY + PageStart, 0, draw_len);
+	BuffDrawLineI(vt_src, dc, geom.CursorY + geom.PageStart, 0, draw_len);
 	DispReleaseDC(vt_src, dc);
 }
 
@@ -803,15 +803,15 @@ void BuffInsertLines(int Count, int YEnd)
 
 	if (CursorLeftM > 0)
 		extl = 1;
-	if (CursorRightM < NumOfColumns-1)
+	if (CursorRightM < geom.NumOfColumns-1)
 		extr = 1;
 	if (extl || extr)
-		EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorY), YEnd-CursorY+1);
+		EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+geom.CursorY), YEnd-geom.CursorY+1);
 
-	SrcPtr = GetLinePtr(PageStart+YEnd-Count) + CursorLeftM;
-	DestPtr = GetLinePtr(PageStart+YEnd) + CursorLeftM;
+	SrcPtr = GetLinePtr(geom.PageStart+YEnd-Count) + CursorLeftM;
+	DestPtr = GetLinePtr(geom.PageStart+YEnd) + CursorLeftM;
 	linelen = CursorRightM - CursorLeftM + 1;
-	for (i= YEnd-Count ; i>=CursorY ; i--) {
+	for (i= YEnd-Count ; i>=geom.CursorY ; i--) {
 		CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 		SrcPtr = PrevLinePtr(SrcPtr);
 		DestPtr = PrevLinePtr(DestPtr);
@@ -821,8 +821,8 @@ void BuffInsertLines(int Count, int YEnd)
 		DestPtr = PrevLinePtr(DestPtr);
 	}
 
-	if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1 || !DispInsertLines(vt_src, Count, YEnd)) {
-		BuffUpdateRect(CursorLeftM-extl, CursorY, CursorRightM+extr, YEnd);
+	if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1 || !DispInsertLines(vt_src, Count, YEnd)) {
+		BuffUpdateRect(CursorLeftM-extl, geom.CursorY, CursorRightM+extr, YEnd);
 	}
 }
 
@@ -848,16 +848,16 @@ void BuffEraseCharsInLine(int XStart, int Count)
 		head = 1;
 	}
 
-	if (XStart + Count < NumOfColumns) {
-		int CursorXSave = CursorX;
-		CursorX = XStart + Count;
+	if (XStart + Count < geom.NumOfColumns) {
+		int CursorXSave = geom.CursorX;
+		geom.CursorX = XStart + Count;
 		if (EraseKanji(1) != 0) {
 			tail = 1;
 		}
-		CursorX = CursorXSave;
+		geom.CursorX = CursorXSave;
 	}
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 	memsetW(&(CodeLineW[XStart]),0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, Count);
 
 	if (cfg.EnableContinuedLineCopy) {
@@ -865,7 +865,7 @@ void BuffEraseCharsInLine(int XStart, int Count)
 			BuffLineContinued(TRUE);
 		}
 
-		if (XStart + Count >= NumOfColumns) {
+		if (XStart + Count >= geom.NumOfColumns) {
 			CodeBuffW[NextLinePtr(LinePtr)].attr &= ~AttrLineContinued;
 		}
 	}
@@ -878,7 +878,7 @@ void BuffEraseCharsInLine(int XStart, int Count)
 		Count += 1;
 	}
 	ttdc_t *dc = DispInitDC(vt_src);
-	BuffDrawLineI(vt_src, dc, CursorY + PageStart, XStart, XStart + Count);
+	BuffDrawLineI(vt_src, dc, geom.CursorY + geom.PageStart, XStart, XStart + Count);
 	DispReleaseDC(vt_src, dc);
 }
 
@@ -895,15 +895,15 @@ void BuffDeleteLines(int Count, int YEnd)
 
 	if (CursorLeftM > 0)
 		extl = 1;
-	if (CursorRightM < NumOfColumns-1)
+	if (CursorRightM < geom.NumOfColumns-1)
 		extr = 1;
 	if (extl || extr)
-		EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorY), YEnd-CursorY+1);
+		EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+geom.CursorY), YEnd-geom.CursorY+1);
 
-	SrcPtr = GetLinePtr(PageStart+CursorY+Count) + (LONG)CursorLeftM;
-	DestPtr = GetLinePtr(PageStart+CursorY) + (LONG)CursorLeftM;
+	SrcPtr = GetLinePtr(geom.PageStart+geom.CursorY+Count) + (LONG)CursorLeftM;
+	DestPtr = GetLinePtr(geom.PageStart+geom.CursorY) + (LONG)CursorLeftM;
 	linelen = CursorRightM - CursorLeftM + 1;
-	for (i=CursorY ; i<= YEnd-Count ; i++) {
+	for (i=geom.CursorY ; i<= YEnd-Count ; i++) {
 		CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 		SrcPtr = NextLinePtr(SrcPtr);
 		DestPtr = NextLinePtr(DestPtr);
@@ -913,8 +913,8 @@ void BuffDeleteLines(int Count, int YEnd)
 		DestPtr = NextLinePtr(DestPtr);
 	}
 
-	if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1 || !DispDeleteLines(vt_src, Count,YEnd)) {
-		BuffUpdateRect(CursorLeftM-extl, CursorY, CursorRightM+extr, YEnd);
+	if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1 || !DispDeleteLines(vt_src, Count,YEnd)) {
+		BuffUpdateRect(CursorLeftM-extl, geom.CursorY, CursorRightM+extr, YEnd);
 	}
 }
 
@@ -927,15 +927,15 @@ void BuffDeleteChars(int Count)
 	int extr = 0;
 	buff_char_t *b;
 
-	if (Count > CursorRightM + 1 - CursorX)
-		Count = CursorRightM + 1 - CursorX;
+	if (Count > CursorRightM + 1 - geom.CursorX)
+		Count = CursorRightM + 1 - geom.CursorX;
 
-	if (CursorX < CursorLeftM || CursorX > CursorRightM)
+	if (geom.CursorX < CursorLeftM || geom.CursorX > CursorRightM)
 		return;
 
-	NewLine(PageStart + CursorY);
+	NewLine(geom.PageStart + geom.CursorY);
 
-	b = &CodeLineW[CursorX];
+	b = &CodeLineW[geom.CursorX];
 
 	if (CellIsPadding(b)) {
 		// 全角の右側、全角をスペースに置き換える
@@ -956,7 +956,7 @@ void BuffDeleteChars(int Count)
 		}
 	}
 
-	if (CursorRightM < NumOfColumns - 1 && (CodeLineW[CursorRightM].attr & AttrKanji)) {
+	if (CursorRightM < geom.NumOfColumns - 1 && (CodeLineW[CursorRightM].attr & AttrKanji)) {
 		BuffSetChar(&CodeLineW[CursorRightM], 0x20, 'H');
 		CodeLineW[CursorRightM].attr &= ~AttrKanji;
 		BuffSetChar(&CodeLineW[CursorRightM + 1], 0x20, 'H');
@@ -964,14 +964,14 @@ void BuffDeleteChars(int Count)
 		extr = 1;
 	}
 
-	MoveLen = CursorRightM + 1 - CursorX - Count;
+	MoveLen = CursorRightM + 1 - geom.CursorX - Count;
 
 	if (MoveLen > 0) {
-		CellsMove(&(CodeLineW[CursorX]), &(CodeLineW[CursorX + Count]), MoveLen);
+		CellsMove(&(CodeLineW[geom.CursorX]), &(CodeLineW[geom.CursorX + Count]), MoveLen);
 	}
-	memsetW(&(CodeLineW[CursorX + MoveLen]), ' ', CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, Count);
+	memsetW(&(CodeLineW[geom.CursorX + MoveLen]), ' ', CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, Count);
 
-	BuffUpdateRect(CursorX, CursorY, CursorRightM + extr, CursorY);
+	BuffUpdateRect(geom.CursorX, geom.CursorY, CursorRightM + extr, geom.CursorY);
 }
 
 /**
@@ -980,7 +980,7 @@ void BuffDeleteChars(int Count)
  */
 void BuffEraseChars(int Count)
 {
-	BuffEraseCharsInLine(CursorX, Count);
+	BuffEraseCharsInLine(geom.CursorX, Count);
 }
 
 void BuffFillWithE(void)
@@ -989,12 +989,12 @@ void BuffFillWithE(void)
 	LONG TmpPtr;
 	int i;
 
-	TmpPtr = GetLinePtr(PageStart);
-	for (i = 0 ; i <= NumOfLines-1-StatusLine ; i++) {
-		memsetW(&(CodeBuffW[TmpPtr]),'E', AttrDefaultFG, AttrDefaultBG, AttrDefault, AttrDefault, NumOfColumns);
+	TmpPtr = GetLinePtr(geom.PageStart);
+	for (i = 0 ; i <= geom.NumOfLines-1-StatusLine ; i++) {
+		memsetW(&(CodeBuffW[TmpPtr]),'E', AttrDefaultFG, AttrDefaultBG, AttrDefault, AttrDefault, geom.NumOfColumns);
 		TmpPtr = NextLinePtr(TmpPtr);
 	}
-	BuffUpdateRect(WinOrgX,WinOrgY,WinOrgX+WinWidth-1,WinOrgY+WinHeight-1);
+	BuffUpdateRect(geom.WinOrgX,geom.WinOrgY,geom.WinOrgX+geom.WinWidth-1,geom.WinOrgY+geom.WinHeight-1);
 }
 
 void BuffDrawLine(const TCharAttr *Attr, int Direction, int C)
@@ -1012,49 +1012,49 @@ void BuffDrawLine(const TCharAttr *Attr, int Direction, int C)
 		case 3:
 		case 4:
 			if (Direction==3) {
-				if (CursorY==0) {
+				if (geom.CursorY==0) {
 					return;
 				}
-				Y = CursorY-1;
+				Y = geom.CursorY-1;
 			}
 			else {
-				if (CursorY==NumOfLines-1-StatusLine) {
+				if (geom.CursorY==geom.NumOfLines-1-StatusLine) {
 					return;
 				}
-				Y = CursorY+1;
+				Y = geom.CursorY+1;
 			}
-			if (CursorX+C > NumOfColumns) {
-				C = NumOfColumns-CursorX;
+			if (geom.CursorX+C > geom.NumOfColumns) {
+				C = geom.NumOfColumns-geom.CursorX;
 			}
-			Ptr = GetLinePtr(PageStart+Y);
-			memsetW(&(CodeBuffW[Ptr+CursorX]),'q', Attr->Fore, Attr->Back, Attr_Attr, Attr->Attr2, C);
-			BuffUpdateRect(CursorX,Y,CursorX+C-1,Y);
+			Ptr = GetLinePtr(geom.PageStart+Y);
+			memsetW(&(CodeBuffW[Ptr+geom.CursorX]),'q', Attr->Fore, Attr->Back, Attr_Attr, Attr->Attr2, C);
+			BuffUpdateRect(geom.CursorX,Y,geom.CursorX+C-1,Y);
 			break;
 		case 5:
 		case 6:
 			if (Direction==5) {
-				if (CursorX==0) {
+				if (geom.CursorX==0) {
 					return;
 				}
-				X = CursorX - 1;
+				X = geom.CursorX - 1;
 			}
 			else {
-				if (CursorX==NumOfColumns-1) {
-					X = CursorX-1;
+				if (geom.CursorX==geom.NumOfColumns-1) {
+					X = geom.CursorX-1;
 				}
 				else {
-					X = CursorX+1;
+					X = geom.CursorX+1;
 				}
 			}
-			Ptr = GetLinePtr(PageStart+CursorY);
-			if (CursorY+C > NumOfLines-StatusLine) {
-				C = NumOfLines-StatusLine-CursorY;
+			Ptr = GetLinePtr(geom.PageStart+geom.CursorY);
+			if (geom.CursorY+C > geom.NumOfLines-StatusLine) {
+				C = geom.NumOfLines-StatusLine-geom.CursorY;
 			}
 			for (i=1; i<=C; i++) {
 				BuffSetChar4(&CodeBuffW[Ptr+X], 'x', Attr->Fore, Attr->Back, Attr_Attr | AttrSpecial, Attr->Attr2, 'H');
 				Ptr = NextLinePtr(Ptr);
 			}
-			BuffUpdateRect(X,CursorY,X,CursorY+C-1);
+			BuffUpdateRect(X,geom.CursorY,X,geom.CursorY+C-1);
 			break;
 	}
 }
@@ -1064,11 +1064,11 @@ void BuffEraseBox(int XStart, int YStart, int XEnd, int YEnd)
 	int C, i;
 	LONG Ptr;
 
-	if (XEnd>NumOfColumns-1) {
-		XEnd = NumOfColumns-1;
+	if (XEnd>geom.NumOfColumns-1) {
+		XEnd = geom.NumOfColumns-1;
 	}
-	if (YEnd>NumOfLines-1-StatusLine) {
-		YEnd = NumOfLines-1-StatusLine;
+	if (YEnd>geom.NumOfLines-1-StatusLine) {
+		YEnd = geom.NumOfLines-1-StatusLine;
 	}
 	if (XStart>XEnd) {
 		return;
@@ -1077,13 +1077,13 @@ void BuffEraseBox(int XStart, int YStart, int XEnd, int YEnd)
 		return;
 	}
 	C = XEnd-XStart+1;
-	Ptr = GetLinePtr(PageStart+YStart);
+	Ptr = GetLinePtr(geom.PageStart+YStart);
 	for (i=YStart; i<=YEnd; i++) {
 		if ((XStart>0) &&
 		    ((CodeBuffW[Ptr+XStart-1].attr & AttrKanji) != 0)) {
 			BuffSetChar4(&CodeBuffW[Ptr+XStart-1], 0x20, CurCharAttr.Fore, CurCharAttr.Back, CurCharAttr.Attr, CurCharAttr.Attr2, 'H');
 		}
-		if ((XStart+C<NumOfColumns) &&
+		if ((XStart+C<geom.NumOfColumns) &&
 		    ((CodeBuffW[Ptr+XStart+C-1].attr & AttrKanji) != 0)) {
 			BuffSetChar4(&CodeBuffW[Ptr+XStart+C], 0x20, CurCharAttr.Fore, CurCharAttr.Back, CurCharAttr.Attr, CurCharAttr.Attr2, 'H');
 		}
@@ -1098,11 +1098,11 @@ void BuffFillBox(char ch, int XStart, int YStart, int XEnd, int YEnd)
 	int Cols, i;
 	LONG Ptr;
 
-	if (XEnd>NumOfColumns-1) {
-		XEnd = NumOfColumns-1;
+	if (XEnd>geom.NumOfColumns-1) {
+		XEnd = geom.NumOfColumns-1;
 	}
-	if (YEnd>NumOfLines-1-StatusLine) {
-		YEnd = NumOfLines-1-StatusLine;
+	if (YEnd>geom.NumOfLines-1-StatusLine) {
+		YEnd = geom.NumOfLines-1-StatusLine;
 	}
 	if (XStart>XEnd) {
 		return;
@@ -1111,14 +1111,14 @@ void BuffFillBox(char ch, int XStart, int YStart, int XEnd, int YEnd)
 		return;
 	}
 	Cols = XEnd-XStart+1;
-	Ptr = GetLinePtr(PageStart+YStart);
+	Ptr = GetLinePtr(geom.PageStart+YStart);
 	for (i=YStart; i<=YEnd; i++) {
 		if ((XStart>0) &&
 		    ((CodeBuffW[Ptr+XStart-1].attr & AttrKanji) != 0)) {
 			BuffSetChar(&CodeBuffW[Ptr + XStart - 1], 0x20, 'H');
 			CodeBuffW[Ptr+XStart-1].attr ^= AttrKanji;
 		}
-		if ((XStart+Cols<NumOfColumns) &&
+		if ((XStart+Cols<geom.NumOfColumns) &&
 		    ((CodeBuffW[Ptr+XStart+Cols-1].attr & AttrKanji) != 0)) {
 			BuffSetChar(&CodeBuffW[Ptr + XStart + Cols], 0x20, 'H');
 		}
@@ -1149,31 +1149,31 @@ void BuffCopyBox(
 	(void)SrcPage;		// warning: parameter 'SrcPage' set but not used
 	(void)DstPage;		// warning: parameter 'DstPage' set but not used
 
-	if (SrcXEnd > NumOfColumns - 1) {
-		SrcXEnd = NumOfColumns-1;
+	if (SrcXEnd > geom.NumOfColumns - 1) {
+		SrcXEnd = geom.NumOfColumns-1;
 	}
-	if (SrcYEnd > NumOfLines-1-StatusLine) {
-		SrcYEnd = NumOfColumns-1;
+	if (SrcYEnd > geom.NumOfLines-1-StatusLine) {
+		SrcYEnd = geom.NumOfColumns-1;
 	}
 	if (SrcXStart > SrcXEnd ||
 	    SrcYStart > SrcYEnd ||
-	    DstX > NumOfColumns-1 ||
-	    DstY > NumOfLines-1-StatusLine) {
+	    DstX > geom.NumOfColumns-1 ||
+	    DstY > geom.NumOfLines-1-StatusLine) {
 		return;
 	}
 
 	C = SrcXEnd - SrcXStart + 1;
-	if (DstX + C > NumOfColumns) {
-		C = NumOfColumns - DstX;
+	if (DstX + C > geom.NumOfColumns) {
+		C = geom.NumOfColumns - DstX;
 	}
 	L = SrcYEnd - SrcYStart + 1;
-	if (DstY + C > NumOfColumns) {
-		C = NumOfColumns - DstX;
+	if (DstY + C > geom.NumOfColumns) {
+		C = geom.NumOfColumns - DstX;
 	}
 
 	if (SrcXStart > DstX) {
-		SPtr = GetLinePtr(PageStart+SrcYStart);
-		DPtr = GetLinePtr(PageStart+DstY);
+		SPtr = GetLinePtr(geom.PageStart+SrcYStart);
+		DPtr = GetLinePtr(geom.PageStart+DstY);
 		for (i=0; i<L; i++) {
 			CellsCopy(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = NextLinePtr(SPtr);
@@ -1181,8 +1181,8 @@ void BuffCopyBox(
 		}
 	}
 	else if (SrcXStart < DstX) {
-		SPtr = GetLinePtr(PageStart+SrcYEnd);
-		DPtr = GetLinePtr(PageStart+DstY+L-1);
+		SPtr = GetLinePtr(geom.PageStart+SrcYEnd);
+		DPtr = GetLinePtr(geom.PageStart+DstY+L-1);
 		for (i=L; i>0; i--) {
 			CellsCopy(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = PrevLinePtr(SPtr);
@@ -1190,8 +1190,8 @@ void BuffCopyBox(
 		}
 	}
 	else if (SrcYStart != DstY) {
-		SPtr = GetLinePtr(PageStart+SrcYStart);
-		DPtr = GetLinePtr(PageStart+DstY);
+		SPtr = GetLinePtr(geom.PageStart+SrcYStart);
+		DPtr = GetLinePtr(geom.PageStart+DstY);
 		for (i=0; i<L; i++) {
 			CellsMove(&(CodeBuffW[DPtr+DstX]), &(CodeBuffW[SPtr+SrcXStart]), C);
 			SPtr = NextLinePtr(SPtr);
@@ -1206,17 +1206,17 @@ void BuffChangeAttrBox(int XStart, int YStart, int XEnd, int YEnd, const PCharAt
 	int C, i, j;
 	LONG Ptr;
 
-	if (XEnd>NumOfColumns-1) {
-		XEnd = NumOfColumns-1;
+	if (XEnd>geom.NumOfColumns-1) {
+		XEnd = geom.NumOfColumns-1;
 	}
-	if (YEnd>NumOfLines-1-StatusLine) {
-		YEnd = NumOfLines-1-StatusLine;
+	if (YEnd>geom.NumOfLines-1-StatusLine) {
+		YEnd = geom.NumOfLines-1-StatusLine;
 	}
 	if (XStart>XEnd || YStart>YEnd) {
 		return;
 	}
 	C = XEnd-XStart+1;
-	Ptr = GetLinePtr(PageStart+YStart);
+	Ptr = GetLinePtr(geom.PageStart+YStart);
 
 	if (mask) { // DECCARA
 		for (i=YStart; i<=YEnd; i++) {
@@ -1233,7 +1233,7 @@ void BuffChangeAttrBox(int XStart, int YStart, int XEnd, int YEnd, const PCharAt
 				if (mask->Attr2 & Attr2Fore) { CodeBuffW[j].fg = attr->Fore; }
 				if (mask->Attr2 & Attr2Back) { CodeBuffW[j].bg = attr->Back; }
 			}
-			if (XStart+C<NumOfColumns && (CodeBuffW[j-1].attr & AttrKanji)) {
+			if (XStart+C<geom.NumOfColumns && (CodeBuffW[j-1].attr & AttrKanji)) {
 				CodeBuffW[j].attr = (CodeBuffW[j].attr & ~mask->Attr) | attr->Attr;
 				CodeBuffW[j].attr2 = (CodeBuffW[j].attr2 & ~mask->Attr2) | attr->Attr2;
 				if (mask->Attr2 & Attr2Fore) { CodeBuffW[j].fg = attr->Fore; }
@@ -1251,7 +1251,7 @@ void BuffChangeAttrBox(int XStart, int YStart, int XEnd, int YEnd, const PCharAt
 			while (++j < Ptr+XStart+C) {
 				CodeBuffW[j].attr ^= attr->Attr;
 			}
-			if (XStart+C<NumOfColumns && (CodeBuffW[j-1].attr & AttrKanji)) {
+			if (XStart+C<geom.NumOfColumns && (CodeBuffW[j-1].attr & AttrKanji)) {
 				CodeBuffW[j].attr ^= attr->Attr;
 			}
 			Ptr = NextLinePtr(Ptr);
@@ -1265,17 +1265,17 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 	int i, j, endp;
 	LONG Ptr;
 
-	if (XEnd>NumOfColumns-1) {
-		XEnd = NumOfColumns-1;
+	if (XEnd>geom.NumOfColumns-1) {
+		XEnd = geom.NumOfColumns-1;
 	}
-	if (YEnd>NumOfLines-1-StatusLine) {
-		YEnd = NumOfLines-1-StatusLine;
+	if (YEnd>geom.NumOfLines-1-StatusLine) {
+		YEnd = geom.NumOfLines-1-StatusLine;
 	}
 	if (XStart>XEnd || YStart>YEnd) {
 		return;
 	}
 
-	Ptr = GetLinePtr(PageStart+YStart);
+	Ptr = GetLinePtr(geom.PageStart+YStart);
 
 	if (mask) { // DECCARA
 		if (YStart == YEnd) {
@@ -1294,7 +1294,7 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 				if (mask->Attr2 & Attr2Fore) { CodeBuffW[i].fg = attr->Fore; }
 				if (mask->Attr2 & Attr2Back) { CodeBuffW[i].bg = attr->Back; }
 			}
-			if (XEnd < NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
+			if (XEnd < geom.NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
 				CodeBuffW[i].attr = (CodeBuffW[i].attr & ~mask->Attr) | attr->Attr;
 				CodeBuffW[i].attr2 = (CodeBuffW[i].attr2 & ~mask->Attr2) | attr->Attr2;
 				if (mask->Attr2 & Attr2Fore) { CodeBuffW[i].fg = attr->Fore; }
@@ -1303,7 +1303,7 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 		}
 		else {
 			i = Ptr + XStart - 1;
-			endp = Ptr + NumOfColumns;
+			endp = Ptr + geom.NumOfColumns;
 
 			if (XStart > 0 && (CodeBuffW[i].attr & AttrKanji)) {
 				CodeBuffW[i].attr = (CodeBuffW[i].attr & ~mask->Attr) | attr->Attr;
@@ -1321,7 +1321,7 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 			for (j=0; j < YEnd-YStart-1; j++) {
 				Ptr = NextLinePtr(Ptr);
 				i = Ptr;
-				endp = Ptr + NumOfColumns;
+				endp = Ptr + geom.NumOfColumns;
 
 				while (i < endp) {
 					CodeBuffW[i].attr = (CodeBuffW[i].attr & ~mask->Attr) | attr->Attr;
@@ -1343,7 +1343,7 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 				if (mask->Attr2 & Attr2Back) { CodeBuffW[i].bg = attr->Back; }
 				i++;
 			}
-			if (XEnd < NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
+			if (XEnd < geom.NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
 				CodeBuffW[i].attr = (CodeBuffW[i].attr & ~mask->Attr) | attr->Attr;
 				CodeBuffW[i].attr2 = (CodeBuffW[i].attr2 & ~mask->Attr2) | attr->Attr2;
 				if (mask->Attr2 & Attr2Fore) { CodeBuffW[i].fg = attr->Fore; }
@@ -1362,13 +1362,13 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 			while (++i < endp) {
 				CodeBuffW[i].attr ^= attr->Attr;
 			}
-			if (XEnd < NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
+			if (XEnd < geom.NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
 				CodeBuffW[i].attr ^= attr->Attr;
 			}
 		}
 		else {
 			i = Ptr + XStart - 1;
-			endp = Ptr + NumOfColumns;
+			endp = Ptr + geom.NumOfColumns;
 
 			if (XStart > 0 && (CodeBuffW[i].attr & AttrKanji)) {
 				CodeBuffW[i].attr ^= attr->Attr;
@@ -1380,7 +1380,7 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 			for (j=0; j < YEnd-YStart-1; j++) {
 				Ptr = NextLinePtr(Ptr);
 				i = Ptr;
-				endp = Ptr + NumOfColumns;
+				endp = Ptr + geom.NumOfColumns;
 
 				while (i < endp) {
 					CodeBuffW[i].attr ^= attr->Attr;
@@ -1396,13 +1396,13 @@ void BuffChangeAttrStream(int XStart, int YStart, int XEnd, int YEnd, PCharAttr 
 				CodeBuffW[i].attr ^= attr->Attr;
 				i++;
 			}
-			if (XEnd < NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
+			if (XEnd < geom.NumOfColumns-1 && (CodeBuffW[i-1].attr & AttrKanji)) {
 				CodeBuffW[i].attr ^= attr->Attr;
 			}
 			Ptr = NextLinePtr(Ptr);
 		}
 	}
-	BuffUpdateRect(0, YStart, NumOfColumns-1, YEnd);
+	BuffUpdateRect(0, YStart, geom.NumOfColumns-1, YEnd);
 }
 
 /**
@@ -1443,11 +1443,11 @@ static int LeftHalfOfDBCS(LONG Line, int CharPtr)
  */
 static POINT GetCharCell(int x, int y, BOOL right)
 {
-//	y = y + PageStart;
+//	y = y + geom.PageStart;
 
 	// clip
-	x = x < 0 ? 0 : x > NumOfColumns ? NumOfColumns : x;
-	y = y < 0 ? 0 : y > BuffEnd - 1 ? BuffEnd - 1 : y;
+	x = x < 0 ? 0 : x > geom.NumOfColumns ? geom.NumOfColumns : x;
+	y = y < 0 ? 0 : y > geom.BuffEnd - 1 ? geom.BuffEnd - 1 : y;
 
 	int ptr = GetLinePtr(y);
 	int x_char = LeftHalfOfDBCS(ptr, x);		// 文字の先頭
@@ -1459,7 +1459,7 @@ static POINT GetCharCell(int x, int y, BOOL right)
 		int pos = x - x_char;
 		if (pos >= (cell / 2)) {
 			// 文字の中央より右側なので、一つ右の文字を選択
-			if ((x_char + cell) < (NumOfColumns - 1)) {
+			if ((x_char + cell) < (geom.NumOfColumns - 1)) {
 				x = x_char + cell;
 			}
 		}
@@ -1510,12 +1510,12 @@ static int MoveCharPtr(LONG Line, int *x, int dx)
 	while (dx!=0) {
 		if (dx>0) { // move right
 			if ((CodeBuffW[Line+*x].attr & AttrKanji) != 0) {
-				if (*x<NumOfColumns-2) {
+				if (*x<geom.NumOfColumns-2) {
 					i++;
 					*x = *x + 2;
 				}
 			}
-			else if (*x<NumOfColumns-1) {
+			else if (*x<geom.NumOfColumns-1) {
 				i++;
 				(*x)++;
 			}
@@ -1553,7 +1553,7 @@ static wchar_t *BuffGetStringForCB(int sx, int sy, int ex, int ey, BOOL box_sele
 	int x, y;
 
 	assert(sx >= 0);
-	str_size = (NumOfColumns + 2) * (ey - sy + 1);
+	str_size = (geom.NumOfColumns + 2) * (ey - sy + 1);
 	str_w = malloc(sizeof(wchar_t) * str_size);
 
 	LockBuffer();
@@ -1583,7 +1583,7 @@ static wchar_t *BuffGetStringForCB(int sx, int sy, int ex, int ey, BOOL box_sele
 			else {
 				// 複数行選択時の途中の行
 				// 行末まで選択されている
-				IEnd = NumOfColumns - 1;
+				IEnd = geom.NumOfColumns - 1;
 
 				// 継続行コピー設定
 				if (cfg.EnableContinuedLineCopy) {
@@ -1723,7 +1723,7 @@ static size_t MatchOneStringPtr(const buff_char_t *b, const wchar_t *str, size_t
  *	(x,y) の1文字が strと同一か調べる
  *		*注 1文字が複数のwchar_tから構成されている
  *
- *	@param		y		PageStart + CursorY
+ *	@param		y		geom.PageStart + geom.CursorY
  *	@param		str		1文字(wchar_t列)
  *	@param		len		文字列長
  *	@retval		0=マッチしなかった
@@ -1777,11 +1777,11 @@ static BOOL MatchStringPtr(const buff_char_t *b, const wchar_t *str, BOOL LineCo
 
 		// 次の文字
 		x++;
-		if (x == NumOfColumns) {
+		if (x == geom.NumOfColumns) {
 			if (LineContinued && ((b->attr & AttrLineContinued) != 0)) {
 				// 次の行へ
 				y++;
-				if (y == NumOfLines) {
+				if (y == geom.NumOfLines) {
 					// バッファ最終端
 					return 0;
 				}
@@ -1803,7 +1803,7 @@ static BOOL MatchStringPtr(const buff_char_t *b, const wchar_t *str, BOOL LineCo
  *	(x,y)から strと同一か調べる
  *
  *	@param		x		マイナスの時、上の行が対象になる
- *	@param		y		PageStart + CursorY
+ *	@param		y		geom.PageStart + geom.CursorY
  *	@param		LineCntinued	TRUE=行の継続を考慮する
  *	@retval		TRUE	マッチした
  *	@retval		FALSE	マッチしていない
@@ -1823,17 +1823,17 @@ static BOOL MatchString(int x, int y, const wchar_t *str, BOOL LineContinued)
 			break;
 		}
 		TmpPtr = PrevLinePtr(TmpPtr);
-		x += NumOfColumns;
+		x += geom.NumOfColumns;
 		y--;
 	}
-	while(x > NumOfColumns) {
-		if (LineContinued && (CodeBuffW[TmpPtr+NumOfColumns-1].attr & AttrLineContinued) == 0) {
+	while(x > geom.NumOfColumns) {
+		if (LineContinued && (CodeBuffW[TmpPtr+geom.NumOfColumns-1].attr & AttrLineContinued) == 0) {
 			// 行が継続しているか考慮 & 継続していない
 			x = 0;	// 行頭からとする
 			break;
 		}
 		TmpPtr = NextLinePtr(TmpPtr);
-		x -= NumOfColumns;
+		x -= geom.NumOfColumns;
 	}
 
 	for(;;) {
@@ -1853,8 +1853,8 @@ static BOOL MatchString(int x, int y, const wchar_t *str, BOOL LineContinued)
 
 		// 次の文字
 		x++;
-		if (x == NumOfColumns) {
-			if (LineContinued && (CodeBuffW[TmpPtr+NumOfColumns-1].attr & AttrLineContinued) != 0) {
+		if (x == geom.NumOfColumns) {
+			if (LineContinued && (CodeBuffW[TmpPtr+geom.NumOfColumns-1].attr & AttrLineContinued) != 0) {
 				// 次の行へ
 				x = 0;
 				TmpPtr = NextLinePtr(TmpPtr);
@@ -1874,7 +1874,7 @@ static BOOL MatchString(int x, int y, const wchar_t *str, BOOL LineContinued)
  *	(sx,sy)から(ex,ey)までで str にマッチする文字を探して
  *	位置を返す
  *
- *	@param		sy,ex	PageStart + CursorY
+ *	@param		sy,ex	geom.PageStart + geom.CursorY
  *	@param[out]	x		マッチした位置
  *	@param[out]	y		マッチした位置
  *	@retval		TRUE	マッチした
@@ -1888,7 +1888,7 @@ static BOOL BuffGetMatchPosFromString(
 
 	for (y = sy; y<=ey ; y++) {
 		IStart = 0;
-		IEnd = NumOfColumns-1;
+		IEnd = geom.NumOfColumns-1;
 		if (y== sy) {
 			IStart = sx;
 		}
@@ -2013,24 +2013,24 @@ void BuffPrint(BOOL ScrollRegion)
 	else if (Id==IdPrnScrollRegion) {
 		/* print scroll region */
 		PrintStart.x = 0;
-		PrintStart.y = PageStart + CursorTop;
-		PrintEnd.x = NumOfColumns;
-		PrintEnd.y = PageStart + CursorBottom;
+		PrintStart.y = geom.PageStart + CursorTop;
+		PrintEnd.x = geom.NumOfColumns;
+		PrintEnd.y = geom.PageStart + CursorBottom;
 	}
 	else {
 		/* print current screen */
 		PrintStart.x = 0;
-		PrintStart.y = PageStart;
-		PrintEnd.x = NumOfColumns;
-		PrintEnd.y = PageStart + NumOfLines - 1;
+		PrintStart.y = geom.PageStart;
+		PrintEnd.x = geom.NumOfColumns;
+		PrintEnd.y = geom.PageStart + geom.NumOfLines - 1;
 	}
 
 	// スクロールしている分(スクロールバーで古いバッファを見ている等)ずらす
-	PrintStart.y += WinOrgY;
-	PrintEnd.y += WinOrgY;
+	PrintStart.y += geom.WinOrgY;
+	PrintEnd.y += geom.WinOrgY;
 
-	if (PrintEnd.y > BuffEnd-1) {
-		PrintEnd.y = BuffEnd-1;
+	if (PrintEnd.y > geom.BuffEnd-1) {
+		PrintEnd.y = geom.BuffEnd-1;
 	}
 
 	LockBuffer();
@@ -2048,7 +2048,7 @@ void BuffPrint(BOOL ScrollRegion)
 			IEnd = PrintEnd.x - 1;
 		}
 		else {
-			IEnd = NumOfColumns - 1;
+			IEnd = geom.NumOfColumns - 1;
 		}
 
 		int height;
@@ -2086,7 +2086,7 @@ void BuffDumpCurrentLine(PrintFile *handle, BYTE TERM)
 	char bufA[TermWidthMax+1];
 	char *p = bufA;
 
-	i = NumOfColumns;
+	i = geom.NumOfColumns;
 	while ((i>0) && (b[i-1].ansi_char == 0x20)) {
 		i--;
 	}
@@ -2228,16 +2228,16 @@ static BOOL BuffIsHalfWidthFromCode(const BuffConfig *cfg, unsigned int u32, cha
  */
 static int get_url_len(int cur_x, int cur_y)
 {
-	int sp = cur_x + cur_y * NumOfColumns;
+	int sp = cur_x + cur_y * geom.NumOfColumns;
 	int cp;
 	int dp;
 	{
 		int p = sp;
 		p--;
 		while (p > 0) {
-			int sy = p / NumOfColumns;
-			int sx = p % NumOfColumns;
-			int ptr = GetLinePtr(PageStart + sy) + sx;
+			int sy = p / geom.NumOfColumns;
+			int sx = p % geom.NumOfColumns;
+			int ptr = GetLinePtr(geom.PageStart + sy) + sx;
 			if ((CodeBuffW[ptr].attr & AttrURL) == 0) {
 				break;
 			}
@@ -2245,7 +2245,7 @@ static int get_url_len(int cur_x, int cur_y)
 		}
 		sp = p;
 	}
-	cp = cur_x + cur_y * NumOfColumns;
+	cp = cur_x + cur_y * geom.NumOfColumns;
 	dp = cp - sp;
 	return dp;
 }
@@ -2282,7 +2282,7 @@ static BOOL mark_url_w_sub(int sx_s, int sx_e, int sy_s, int sy_e, int *sx_match
 	for (i = 0; i < _countof(schemes); i++) {
 		const wchar_t *prefix = schemes[i].str;
 		// マッチするか?
-		if (BuffGetMatchPosFromString(sx_s, PageStart + sy_s, sx_s, PageStart + sy_s, prefix, &match_x, &match_y)) {
+		if (BuffGetMatchPosFromString(sx_s, geom.PageStart + sy_s, sx_s, geom.PageStart + sy_s, prefix, &match_x, &match_y)) {
 			// マッチした
 			break;
 		}
@@ -2295,15 +2295,15 @@ static BOOL mark_url_w_sub(int sx_s, int sx_e, int sy_s, int sy_e, int *sx_match
 
 	// マッチした
 	*sx_match_s = match_x;
-	*sy_match_s = match_y - PageStart;
+	*sy_match_s = match_y - geom.PageStart;
 	rx = match_x;
-	for (y = match_y; y <= PageStart + sy_e; y++) {
+	for (y = match_y; y <= geom.PageStart + sy_e; y++) {
 		int sx_s_i = 0;
-		int sx_e_i = NumOfColumns - 1;  // とにかく行末まで
-		if (y == PageStart + sy_s) {
+		int sx_e_i = geom.NumOfColumns - 1;  // とにかく行末まで
+		if (y == geom.PageStart + sy_s) {
 			sx_s_i = match_x;
 		}
-		*sy_match_e = y - PageStart;
+		*sy_match_e = y - geom.PageStart;
 		TmpPtr = GetLinePtr(y);
 		for (x = sx_s_i; x <= sx_e_i; x++) {
 			const buff_char_t *b = &CodeBuffW[TmpPtr + x];
@@ -2336,7 +2336,7 @@ static void mark_url_line_w(int cur_x, int cur_y)
 	const buff_char_t *b;
 
 	// URL強調の先頭を探す
-	TmpPtr = GetLinePtr(PageStart + cur_y) + cur_x - 1;	// カーソル位置をポインタへ
+	TmpPtr = GetLinePtr(geom.PageStart + cur_y) + cur_x - 1;	// カーソル位置をポインタへ
 	while ((CodeBuffW[TmpPtr].attr & AttrURL) != 0) {
 		if (TmpPtr == 0) {
 			break;
@@ -2347,19 +2347,19 @@ static void mark_url_line_w(int cur_x, int cur_y)
 
 	// ポインタをカーソル位置へ
 	GetPosFromPtr(&CodeBuffW[TmpPtr], &sx, &sy);
-	if (sy >= PageStart) {
-		sy = sy - PageStart;
+	if (sy >= geom.PageStart) {
+		sy = sy - geom.PageStart;
 	} else {
-		sy = sy - PageStart;
+		sy = sy - geom.PageStart;
 		sy = sy + NumOfLinesInBuff;
 	}
 
 	// 行末を探す
-	ex = NumOfColumns - 1;
+	ex = geom.NumOfColumns - 1;
 	ey = cur_y;
-	if (cur_y <= NumOfLines - 1) {
-		TmpPtr = GetLinePtr(PageStart + ey);
-		while ((CodeBuffW[TmpPtr + NumOfColumns - 1].attr & AttrLineContinued) != 0) {
+	if (cur_y <= geom.NumOfLines - 1) {
+		TmpPtr = GetLinePtr(geom.PageStart + ey);
+		while ((CodeBuffW[TmpPtr + geom.NumOfColumns - 1].attr & AttrLineContinued) != 0) {
 			ey++;
 			TmpPtr = NextLinePtr(TmpPtr);
 		}
@@ -2379,14 +2379,14 @@ static void mark_url_line_w(int cur_x, int cur_y)
 		int y;
 		for (y = sy; y <= ey; y++) {
 			int sx_i = 0;
-			int ex_i = NumOfColumns - 1;
+			int ex_i = geom.NumOfColumns - 1;
 			if (y == sy) {
 				sx_i = sx;
 			}
 			if (y == ey) {
 				ex_i = ex;
 			}
-			TmpPtr = GetLinePtr(PageStart + y);
+			TmpPtr = GetLinePtr(geom.PageStart + y);
 			for (x = sx_i; x < ex_i; x++) {
 				CodeBuffW[TmpPtr + x].attr &= ~AttrURL;
 			}
@@ -2421,8 +2421,8 @@ static void mark_url_line_w(int cur_x, int cur_y)
 		}
 
 		// 次のセルへ
-		if (sx_i == NumOfColumns - 1) {
-			if (sy_i == NumOfLines - 1) {
+		if (sx_i == geom.NumOfColumns - 1) {
+			if (sy_i == geom.NumOfLines - 1) {
 				break;
 			}
 			sx_i = 0;
@@ -2439,14 +2439,14 @@ static void mark_url_line_w(int cur_x, int cur_y)
 		int y;
 		for (y = sy; y <= ey; y++) {
 			int sx_i = 0;
-			int ex_i = NumOfColumns - 1;
+			int ex_i = geom.NumOfColumns - 1;
 			if (y == sy) {
 				sx_i = sx;
 			}
 			else if (y == ey) {
 				ex_i = ex;
 			}
-			BuffDrawLineI(vt_src, dc, y + PageStart, sx_i, ex_i);
+			BuffDrawLineI(vt_src, dc, y + geom.PageStart, sx_i, ex_i);
 		}
 	}
 	DispReleaseDC(vt_src, dc);
@@ -2474,8 +2474,8 @@ static void mark_url_w(int cur_x, int cur_y)
 	if (x == 0) {
 		// 一番左の時は、前の行から継続していて、前の行の最後がURLだった時
 		if ((CodeLineW[0].attr & AttrLineContinued) != 0) {
-			const LONG TmpPtr = GetLinePtr(PageStart + cur_y - 1);
-			if ((CodeBuffW[TmpPtr + NumOfColumns - 1].attr & AttrURL) != 0) {
+			const LONG TmpPtr = GetLinePtr(geom.PageStart + cur_y - 1);
+			if ((CodeBuffW[TmpPtr + geom.NumOfColumns - 1].attr & AttrURL) != 0) {
 				prev = TRUE;
 			}
 		}
@@ -2487,12 +2487,12 @@ static void mark_url_w(int cur_x, int cur_y)
 	}
 
 	// 1つ後ろのセルがURL?
-	if (x == NumOfColumns - 1) {
+	if (x == geom.NumOfColumns - 1) {
 		// 現在xが一番右?
-		if ((cur_y + 1) < NumOfLines) {
+		if ((cur_y + 1) < geom.NumOfLines) {
 			if ((CodeLineW[x].attr & AttrLineContinued) != 0) {
-				const LONG TmpPtr = GetLinePtr(PageStart + cur_y + 1);
-				if ((CodeBuffW[TmpPtr + NumOfColumns - 1].attr & AttrURL) != 0) {
+				const LONG TmpPtr = GetLinePtr(geom.PageStart + cur_y + 1);
+				if ((CodeBuffW[TmpPtr + geom.NumOfColumns - 1].attr & AttrURL) != 0) {
 					next = TRUE;
 				}
 			}
@@ -2508,7 +2508,7 @@ static void mark_url_w(int cur_x, int cur_y)
 		if (next == TRUE) {
 			if (isURLchar(u32)) {
 				// URLにはさまれていて、URLになりえるキャラクタ
-				int ptr = GetLinePtr(PageStart + cur_y) + cur_x;
+				int ptr = GetLinePtr(geom.PageStart + cur_y) + cur_x;
 				CodeBuffW[ptr].attr |= AttrURL;
 				return;
 			}
@@ -2537,7 +2537,7 @@ static void mark_url_w(int cur_x, int cur_y)
 	if (u32 != '/') {
 		return;
 	}
-	if (!MatchString(x - 2, PageStart + CursorY, L"://", TRUE)) {
+	if (!MatchString(x - 2, geom.PageStart + geom.CursorY, L"://", TRUE)) {
 		// "://" の一部ではない
 		return;
 	}
@@ -2547,7 +2547,7 @@ static void mark_url_w(int cur_x, int cur_y)
 		const wchar_t *prefix = schemes[i].str;
 		len = schemes[i].len - 1;
 		sx = x - len;
-		sy = PageStart + CursorY;
+		sy = geom.PageStart + geom.CursorY;
 		ey = sy;
 		if (x < len) {
 			// 短い
@@ -2556,8 +2556,8 @@ static void mark_url_w(int cur_x, int cur_y)
 				continue;
 			}
 			// 前の行から検索かける
-			sx = NumOfColumns + sx;
-			sy = PageStart + CursorY - 1;
+			sx = geom.NumOfColumns + sx;
+			sy = geom.PageStart + geom.CursorY - 1;
 		}
 		// マッチするか?
 		if (BuffGetMatchPosFromString(sx, sy, x, ey, prefix, NULL, NULL)) {
@@ -2586,12 +2586,12 @@ static void mark_url_w(int cur_x, int cur_y)
 		while (left > 0) {
 			CodeBuffW[TmpPtr + xx].attr |= AttrURL;
 			xx++;
-			if (xx == NumOfColumns) {
+			if (xx == geom.NumOfColumns) {
 				int draw_x = sx;
-				int draw_y = CursorY - 1;
+				int draw_y = geom.CursorY - 1;
 				if (IsLineVisible(vt_src, &draw_x, &draw_y)) {
 					ttdc_t *dc = DispInitDC(vt_src);
-					BuffDrawLineI(vt_src, dc, PageStart + CursorY - 1, sx, NumOfColumns - 1);
+					BuffDrawLineI(vt_src, dc, geom.PageStart + geom.CursorY - 1, sx, geom.NumOfColumns - 1);
 					DispReleaseDC(vt_src, dc);
 				}
 				TmpPtr = NextLinePtr(TmpPtr);
@@ -2649,7 +2649,7 @@ static wchar_t *GetWCS(const buff_char_t *b)
 static buff_char_t *IsCombiningChar(int x, int y, BOOL wrap, unsigned int u32, int *combine)
 {
 	buff_char_t *p = NULL;  // NULLのとき、前の文字はない
-	LONG LinePtr_ = GetLinePtr(PageStart+y);
+	LONG LinePtr_ = GetLinePtr(geom.PageStart+y);
 	buff_char_t *CodeLineW = &CodeBuffW[LinePtr_];
 	int combine_type;	// 0 or 1 or 2
 
@@ -2661,7 +2661,7 @@ static buff_char_t *IsCombiningChar(int x, int y, BOOL wrap, unsigned int u32, i
 		*combine = combine_type;
 	}
 
-	if (x == NumOfColumns - 1 && wrap) {
+	if (x == geom.NumOfColumns - 1 && wrap) {
 		// 現在位置に結合する
 		p = &CodeLineW[x];
 		if (CellIsPadding(p)){
@@ -2791,7 +2791,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 	assert(Attr_Attr == (Attr->AttrEx & 0xff));
 
 #if 0
-	OutputDebugPrintfW(L"BuffPutUnicode(U+%06x,(%d,%d)\n", u32, CursorX, CursorY);
+	OutputDebugPrintfW(L"BuffPutUnicode(U+%06x,(%d,%d)\n", u32, geom.CursorX, geom.CursorY);
 #endif
 
 	if (u32 < 0x20 || (0x80 <= u32 && u32 <= 0x9f)) {
@@ -2800,13 +2800,13 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		return 0;
 	}
 
-	if (cfg.EnableContinuedLineCopy && CursorX == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
+	if (cfg.EnableContinuedLineCopy && geom.CursorX == 0 && (CodeLineW[0].attr & AttrLineContinued)) {
 		Attr_Attr |= AttrLineContinued;
 	}
 
 	// 結合文字 or 1つ前の文字の影響で結合する?
 	combining_type = 0;
-	p = IsCombiningChar(CursorX, CursorY, Wrap, u32, &combining_type);
+	p = IsCombiningChar(geom.CursorX, geom.CursorY, Wrap, u32, &combining_type);
 	if (p != NULL || combining_type != 0) {
 		// 結合する
 		BOOL add_base_char = FALSE;
@@ -2816,7 +2816,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			// 前のもじ(基底文字)がないのに結合文字が出てきたとき
 			// NBSP(non-breaking space) U+00A0 に結合させる
 			add_base_char = TRUE;
-			p = &CodeLineW[CursorX];
+			p = &CodeLineW[geom.CursorX];
 			BuffSetChar(p, 0xa0, 'H');
 
 			move_x = 1;  // カーソル移動量=1
@@ -2832,12 +2832,12 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			if(StrChangeCount == 0) {
 				// 描画範囲がクリアされている、再度設定する
 				StrChangeCount = p->cell;
-				if (CursorX == 0) {
+				if (geom.CursorX == 0) {
 					// カーソルが左端の時
 					StrChangeStart = 0;
 				}
 				else {
-					StrChangeStart = CursorX - StrChangeCount + 1;
+					StrChangeStart = geom.CursorX - StrChangeCount + 1;
 				}
 			}
 			else {
@@ -2849,14 +2849,14 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			//	ただし次の時は Padding を入れない
 			//	- 行末のとき (TODO この条件は不要?)
 			//	- 基底文字がある状態で、Spacing Mark文字(カーソルが+1移動する結合文字)が入力されたとき
-			if (CursorX < NumOfColumns - 1) {
+			if (geom.CursorX < geom.NumOfColumns - 1) {
 				if (add_base_char == FALSE) {
-					BuffSetChar(&CodeLineW[CursorX], 0, 'H');
-					CodeLineW[CursorX].Padding = TRUE;
-					CodeLineW[CursorX].attr = Attr_Attr;
-					CodeLineW[CursorX].attr2 = Attr->Attr2;
-					CodeLineW[CursorX].fg = Attr->Fore;
-					CodeLineW[CursorX].bg = Attr->Back;
+					BuffSetChar(&CodeLineW[geom.CursorX], 0, 'H');
+					CodeLineW[geom.CursorX].Padding = TRUE;
+					CodeLineW[geom.CursorX].attr = Attr_Attr;
+					CodeLineW[geom.CursorX].attr2 = Attr->Attr2;
+					CodeLineW[geom.CursorX].fg = Attr->Fore;
+					CodeLineW[geom.CursorX].bg = Attr->Back;
 				}
 			}
 		}
@@ -2871,23 +2871,23 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			if (Wrap) {
 				if (!BuffIsHalfWidthFromPropery(&cfg, p->WidthProperty)) {
 					// 行末に2セルの文字が描画済み、2セルの右側にカーソルがある状態
-					StrChangeStart = CursorX - 1;
+					StrChangeStart = geom.CursorX - 1;
 					StrChangeCount = 2;
 				}
 				else {
 					// 行末に1セルの文字が描画されている、その上にカーソルがある状態
-					StrChangeStart = CursorX;
+					StrChangeStart = geom.CursorX;
 					StrChangeCount = 1;
 				}
 			}
 			else {
 				StrChangeCount = p->cell;
-				if (CursorX == 0) {
+				if (geom.CursorX == 0) {
 					// カーソルが左端の時
 					StrChangeStart = 0;
 				}
 				else {
-					StrChangeStart = CursorX - StrChangeCount;
+					StrChangeStart = geom.CursorX - StrChangeCount;
 				}
 			}
 		}
@@ -2900,24 +2900,24 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		char emoji;
 		BOOL half_width = BuffIsHalfWidthFromCode(&cfg, u32, &width_property, &emoji);
 
-		p = &CodeLineW[CursorX];
+		p = &CodeLineW[geom.CursorX];
 		// 現在の位置が全角の右側?
 		if (CellIsPadding(p)) {
 			// 全角の前半をスペースに置き換える
-			assert(CursorX > 0);  // 行頭に全角の右側はない
+			assert(geom.CursorX > 0);  // 行頭に全角の右側はない
 			BuffSetChar(p - 1, ' ', 'H');
 			BuffSetChar(p, ' ', 'H');
 			if (StrChangeCount == 0) {
 				StrChangeCount = 3;
-				StrChangeStart = CursorX - 1;
+				StrChangeStart = geom.CursorX - 1;
 			}
 			else {
-				if (StrChangeStart < CursorX) {
-					StrChangeCount += (CursorX - StrChangeStart) + 1;
+				if (StrChangeStart < geom.CursorX) {
+					StrChangeCount += (geom.CursorX - StrChangeStart) + 1;
 				}
 				else {
-					StrChangeStart = CursorX;
-					StrChangeCount += CursorX - StrChangeStart;
+					StrChangeStart = geom.CursorX;
+					StrChangeCount += geom.CursorX - StrChangeStart;
 				}
 			}
 		}
@@ -2925,15 +2925,15 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 		if (half_width && CellIsFullWidth(p)) {
 			// 行末に全角(2cell)以上の文字が存在する可能性がある
 			BuffSetChar(p, ' ', 'H');
-			if (CursorX < NumOfColumns - 1) {
+			if (geom.CursorX < geom.NumOfColumns - 1) {
 				BuffSetChar(p + 1, ' ', 'H');
 			}
 			if (StrChangeCount == 0) {
 				StrChangeCount = 3;
-				StrChangeStart = CursorX;
+				StrChangeStart = geom.CursorX;
 			}
 			else {
-				if (CursorX < StrChangeStart) {
+				if (geom.CursorX < StrChangeStart) {
 					assert(FALSE);
 				}
 				else {
@@ -2959,8 +2959,8 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			// TODO 未チェック
 			int XStart, LineEnd, MoveLen;
 			int extr = 0;
-			if (CursorX > CursorRightM)
-				LineEnd = NumOfColumns - 1;
+			if (geom.CursorX > CursorRightM)
+				LineEnd = geom.NumOfColumns - 1;
 			else
 				LineEnd = CursorRightM;
 
@@ -2971,14 +2971,14 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			else {
 				// 全角として扱う
 				move_x = 2;
-				if (CursorX + 1 > LineEnd) {
+				if (geom.CursorX + 1 > LineEnd) {
 					// はみ出す
 					return -1;
 				}
 			}
 
 			// 一番最後の文字が全角の場合、
-			if (LineEnd <= NumOfColumns - 1 && (CodeLineW[LineEnd - 1].attr & AttrKanji)) {
+			if (LineEnd <= geom.NumOfColumns - 1 && (CodeLineW[LineEnd - 1].attr & AttrKanji)) {
 				BuffSetChar(&CodeLineW[LineEnd - 1], 0x20, 'H');
 				CodeLineW[LineEnd].attr &= ~AttrKanji;
 				//				CodeLine[LineEnd+1] = 0x20;
@@ -2987,35 +2987,35 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			}
 
 			if (!half_width) {
-				MoveLen = LineEnd - CursorX - 1;
+				MoveLen = LineEnd - geom.CursorX - 1;
 				if (MoveLen > 0) {
-					CellsMove(&(CodeLineW[CursorX + 2]), &(CodeLineW[CursorX]), MoveLen);
+					CellsMove(&(CodeLineW[geom.CursorX + 2]), &(CodeLineW[geom.CursorX]), MoveLen);
 				}
 			}
 			else {
-				MoveLen = LineEnd - CursorX;
+				MoveLen = LineEnd - geom.CursorX;
 				if (MoveLen > 0) {
-					CellsMove(&(CodeLineW[CursorX + 1]), &(CodeLineW[CursorX]), MoveLen);
+					CellsMove(&(CodeLineW[geom.CursorX + 1]), &(CodeLineW[geom.CursorX]), MoveLen);
 				}
 			}
 
-			BuffSetChar2(&CodeLineW[CursorX], u32, width_property, half_width, emoji);
-			CodeLineW[CursorX].attr = Attr_Attr;
-			CodeLineW[CursorX].attr2 = Attr->Attr2;
-			CodeLineW[CursorX].fg = Attr->Fore;
-			CodeLineW[CursorX].bg = Attr->Back;
-			if (!half_width && CursorX < LineEnd) {
-				BuffSetChar(&CodeLineW[CursorX + 1], 0, 'H');
-				CodeLineW[CursorX + 1].Padding = TRUE;
-				CodeLineW[CursorX + 1].attr = Attr_Attr;
-				CodeLineW[CursorX + 1].attr2 = Attr->Attr2;
-				CodeLineW[CursorX + 1].fg = Attr->Fore;
-				CodeLineW[CursorX + 1].bg = Attr->Back;
+			BuffSetChar2(&CodeLineW[geom.CursorX], u32, width_property, half_width, emoji);
+			CodeLineW[geom.CursorX].attr = Attr_Attr;
+			CodeLineW[geom.CursorX].attr2 = Attr->Attr2;
+			CodeLineW[geom.CursorX].fg = Attr->Fore;
+			CodeLineW[geom.CursorX].bg = Attr->Back;
+			if (!half_width && geom.CursorX < LineEnd) {
+				BuffSetChar(&CodeLineW[geom.CursorX + 1], 0, 'H');
+				CodeLineW[geom.CursorX + 1].Padding = TRUE;
+				CodeLineW[geom.CursorX + 1].attr = Attr_Attr;
+				CodeLineW[geom.CursorX + 1].attr2 = Attr->Attr2;
+				CodeLineW[geom.CursorX + 1].fg = Attr->Fore;
+				CodeLineW[geom.CursorX + 1].bg = Attr->Back;
 			}
 #if 0
 			/* begin - ishizaki */
-			markURL(CursorX);
-			markURL(CursorX+1);
+			markURL(geom.CursorX);
+			markURL(geom.CursorX+1);
 			/* end - ishizaki */
 #endif
 
@@ -3030,18 +3030,18 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			}
 
 			if (StrChangeCount == 0) {
-				XStart = CursorX;
+				XStart = geom.CursorX;
 			}
 			else {
 				XStart = StrChangeStart;
 			}
 			StrChangeCount = 0;
-			BuffUpdateRect(XStart, CursorY, LineEnd + extr, CursorY);
+			BuffUpdateRect(XStart, geom.CursorY, LineEnd + extr, geom.CursorY);
 		}
 		else {
 			if ((Attr->AttrEx & AttrPadding) != 0) {
 				// 詰め物
-				buff_char_t *b = &CodeLineW[CursorX];
+				buff_char_t *b = &CodeLineW[geom.CursorX];
 				BuffSetChar(b, u32, 'H');
 				b->Padding = TRUE;
 				b->attr = Attr_Attr;
@@ -3060,28 +3060,28 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 				else {
 					// 全角として扱う
 					move_x = 2;
-					if (CursorX + 2 > NumOfColumns) {
+					if (geom.CursorX + 2 > geom.NumOfColumns) {
 						// はみ出す
 						return -1;
 					}
 				}
 
-				BuffSetChar2(&CodeLineW[CursorX], u32, width_property, half_width, emoji);
+				BuffSetChar2(&CodeLineW[geom.CursorX], u32, width_property, half_width, emoji);
 				if (half_width) {
-					CodeLineW[CursorX].attr = Attr_Attr;
+					CodeLineW[geom.CursorX].attr = Attr_Attr;
 				}
 				else {
 					// 全角
-					CodeLineW[CursorX].attr = Attr_Attr | AttrKanji;
+					CodeLineW[geom.CursorX].attr = Attr_Attr | AttrKanji;
 				}
-				CodeLineW[CursorX].attr2 = Attr->Attr2;
-				CodeLineW[CursorX].fg = Attr->Fore;
-				CodeLineW[CursorX].bg = Attr->Back;
+				CodeLineW[geom.CursorX].attr2 = Attr->Attr2;
+				CodeLineW[geom.CursorX].fg = Attr->Fore;
+				CodeLineW[geom.CursorX].bg = Attr->Back;
 
 				if (!half_width) {
 					// 全角の時は次のセルは詰め物
-					if (CursorX < NumOfColumns - 1) {
-						buff_char_t *b = &CodeLineW[CursorX + 1];
+					if (geom.CursorX < geom.NumOfColumns - 1) {
+						buff_char_t *b = &CodeLineW[geom.CursorX + 1];
 						BuffSetChar(b, 0, 'H');
 						b->Padding = TRUE;
 						b->attr = 0;
@@ -3093,7 +3093,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			}
 
 			if (StrChangeCount == 0) {
-				StrChangeStart = CursorX;
+				StrChangeStart = geom.CursorX;
 			}
 			if (move_x == 0) {
 				if (StrChangeCount == 0) {
@@ -3110,7 +3110,7 @@ int BuffPutUnicode(unsigned int u32, const TCharAttr *Attr, BOOL Insert)
 			}
 
 			// URLの検出
-			mark_url_w(CursorX, CursorY);
+			mark_url_w(geom.CursorX, geom.CursorY);
 		}
 	}
 
@@ -3158,7 +3158,7 @@ static int TCharAttrCmp(const TCharAttr *a, const TCharAttr *b)
  *	1行描画
  *
  *	@param	SY				スクリーン上の位置(Character)  !バッファ上の位置
- *							PageStart + YStart など
+ *							geom.PageStart + YStart など
  *	@param	IStart,IEnd		スクリーン上の位置(Character)
  *							指定した間を描画する
  *  @param	disp_strW()		wchar_t 文字を描画用関数 (Unicode用)
@@ -3186,8 +3186,8 @@ void BuffGetDrawInfoW(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd,
 #if 0
 	OutputDebugPrintf("BuffGetDrawInfoW(%d,%d-%d)\n", SY, IStart, IEnd);
 #endif
-	if (IEnd >= NumOfColumns) {
-		IEnd = NumOfColumns - 1;
+	if (IEnd >= geom.NumOfColumns) {
+		IEnd = geom.NumOfColumns - 1;
 	}
 	while (!EndFlag) {
 		const buff_char_t *b = &CodeBuffW[TmpPtr + istart + count];
@@ -3340,7 +3340,7 @@ void BuffGetDrawInfoW(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd,
  *	1行描画 画面用
  *
  *	@param	SY				スクリーン上の位置(Character)  !バッファ上の位置
- *							PageStart + YStart など
+ *							geom.PageStart + YStart など
  *	@param	IStart,IEnd		スクリーン上の位置(Character)
  *							指定した間を描画する
  */
@@ -3350,7 +3350,7 @@ static void BuffDrawLineI(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd
 		// 画面描画
 		//	カーソル位置、表示開始位置
 		int X = IStart;
-		int Y = SY - PageStart;
+		int Y = SY - geom.PageStart;
 		//	画面上の描画位置(pixel)
 		if (! IsLineVisible(vt, &X, &Y)) {
 			// 描画不要行
@@ -3363,8 +3363,8 @@ static void BuffDrawLineI(vtdraw_t *vt, ttdc_t *dc, int SY, int IStart, int IEnd
 		// プリンタの時
 		//	何もしない(文字の位置は設定済み)
 	}
-	if (IEnd >= NumOfColumns) {
-		IEnd = NumOfColumns - 1;
+	if (IEnd >= geom.NumOfColumns) {
+		IEnd = geom.NumOfColumns - 1;
 	}
 
 	BuffGetDrawInfoW(vt, dc, SY, IStart, IEnd, DispStrW, DispStrA);
@@ -3382,32 +3382,32 @@ void BuffUpdateRect(int XStart, int YStart, int XEnd, int YEnd)
 	LONG TmpPtr;
 	BOOL Caret;
 
-	if (XStart >= WinOrgX+WinWidth) {
+	if (XStart >= geom.WinOrgX+geom.WinWidth) {
 		return;
 	}
-	if (YStart >= WinOrgY+WinHeight) {
+	if (YStart >= geom.WinOrgY+geom.WinHeight) {
 		return;
 	}
-	if (XEnd < WinOrgX) {
+	if (XEnd < geom.WinOrgX) {
 		return;
 	}
-	if (YEnd < WinOrgY) {
+	if (YEnd < geom.WinOrgY) {
 		return;
 	}
 
 	ttdc_t *dc = DispInitDC(vt_src);
 
-	if (XStart < WinOrgX) {
-		XStart = WinOrgX;
+	if (XStart < geom.WinOrgX) {
+		XStart = geom.WinOrgX;
 	}
-	if (YStart < WinOrgY) {
-		YStart = WinOrgY;
+	if (YStart < geom.WinOrgY) {
+		YStart = geom.WinOrgY;
 	}
-	if (XEnd >= WinOrgX+WinWidth) {
-		XEnd = WinOrgX+WinWidth-1;
+	if (XEnd >= geom.WinOrgX+geom.WinWidth) {
+		XEnd = geom.WinOrgX+geom.WinWidth-1;
 	}
-	if (YEnd >= WinOrgY+WinHeight) {
-		YEnd = WinOrgY+WinHeight-1;
+	if (YEnd >= geom.WinOrgY+geom.WinHeight) {
+		YEnd = geom.WinOrgY+geom.WinHeight-1;
 	}
 
 #if 0
@@ -3422,8 +3422,8 @@ void BuffUpdateRect(int XStart, int YStart, int XEnd, int YEnd)
 		CaretOff(vt_src);
 	}
 
-	TmpPtr = GetLinePtr(PageStart+YStart);
-	for (j = YStart+PageStart ; j <= YEnd+PageStart ; j++) {
+	TmpPtr = GetLinePtr(geom.PageStart+YStart);
+	for (j = YStart+geom.PageStart ; j <= YEnd+geom.PageStart ; j++) {
 		IStart = XStart;
 		IEnd = XEnd;
 
@@ -3449,14 +3449,14 @@ void UpdateStr(void)
 		return;
 	}
 	X = StrChangeStart;
-	Y = CursorY;
+	Y = geom.CursorY;
 	if (! IsLineVisible(vt_src, &X, &Y)) {
 		StrChangeCount = 0;
 		return;
 	}
 
 	ttdc_t *dc = DispInitDC(vt_src);
-	BuffDrawLineI(vt_src, dc, PageStart + CursorY, StrChangeStart, StrChangeStart + StrChangeCount - 1);
+	BuffDrawLineI(vt_src, dc, geom.PageStart + geom.CursorY, StrChangeStart, StrChangeStart + StrChangeCount - 1);
 	DispReleaseDC(vt_src, dc);
 	StrChangeCount = 0;
 }
@@ -3466,17 +3466,17 @@ void MoveCursor(int Xnew, int Ynew)
 	BuffConfig cfg = getcfg();
 	UpdateStr();
 
-	if (CursorY!=Ynew) {
-		NewLine(PageStart+Ynew);
+	if (geom.CursorY!=Ynew) {
+		NewLine(geom.PageStart+Ynew);
 	}
 
-	CursorX = Xnew;
-	CursorY = Ynew;
+	geom.CursorX = Xnew;
+	geom.CursorY = Ynew;
 	Wrap = FALSE;
 
 	/* 最下行でだけ自動スクロールする*/
-	if (cfg.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
-		DispScrollToCursor(vt_src, CursorX, CursorY);
+	if (cfg.AutoScrollOnlyInBottomLine == 0 || geom.WinOrgY == 0) {
+		DispScrollToCursor(vt_src, geom.CursorX, geom.CursorY);
 	}
 }
 
@@ -3485,10 +3485,10 @@ void MoveRight(void)
   this procedure must be called from DispChar&DispKanji only */
 {
 	BuffConfig cfg = getcfg();
-	CursorX++;
+	geom.CursorX++;
 	/* 最下行でだけ自動スクロールする */
-	if (cfg.AutoScrollOnlyInBottomLine == 0 || WinOrgY == 0) {
-		DispScrollToCursor(vt_src, CursorX, CursorY);
+	if (cfg.AutoScrollOnlyInBottomLine == 0 || geom.WinOrgY == 0) {
+		DispScrollToCursor(vt_src, geom.CursorX, geom.CursorY);
 	}
 }
 
@@ -3498,7 +3498,7 @@ void BuffSetCaretWidth(void)
 	BOOL DW;
 
 	/* check whether cursor on a DBCS character */
-	DW = (((BYTE)(CodeLineW[CursorX]).attr & AttrKanji) != 0);
+	DW = (((BYTE)(CodeLineW[geom.CursorX]).attr & AttrKanji) != 0);
 	DispSetCaretWidth(DW);
 }
 
@@ -3508,18 +3508,18 @@ void ScrollUp1Line(void)
 	int extl=0, extr=0;
 	LONG SrcPtr, DestPtr;
 
-	if ((CursorTop<=CursorY) && (CursorY<=CursorBottom)) {
+	if ((CursorTop<=geom.CursorY) && (geom.CursorY<=CursorBottom)) {
 		UpdateStr();
 
 		if (CursorLeftM > 0)
 			extl = 1;
-		if (CursorRightM < NumOfColumns-1)
+		if (CursorRightM < geom.NumOfColumns-1)
 			extr = 1;
 		if (extl || extr)
-			EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorTop), CursorBottom-CursorTop+1);
+			EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+CursorTop), CursorBottom-CursorTop+1);
 
 		linelen = CursorRightM - CursorLeftM + 1;
-		DestPtr = GetLinePtr(PageStart+CursorBottom) + CursorLeftM;
+		DestPtr = GetLinePtr(geom.PageStart+CursorBottom) + CursorLeftM;
 		for (i = CursorBottom-1 ; i >= CursorTop ; i--) {
 			SrcPtr = PrevLinePtr(DestPtr);
 			CellsCopy(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
@@ -3527,7 +3527,7 @@ void ScrollUp1Line(void)
 		}
 		memsetW(&(CodeBuffW[SrcPtr]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, linelen);
 
-		if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1)
+		if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1)
 			BuffUpdateRect(CursorLeftM-extl, CursorTop, CursorRightM+extr, CursorBottom);
 		else
 			DispScrollNLines(vt_src, CursorTop, CursorBottom, -1);
@@ -3546,45 +3546,45 @@ void BuffScrollNLines(int n)
 	}
 	UpdateStr();
 
-	if (CursorLeftM == 0 && CursorRightM == NumOfColumns-1 && CursorTop == 0) {
-		if (CursorBottom == NumOfLines-1) {
-			WinOrgY = WinOrgY-n;
+	if (CursorLeftM == 0 && CursorRightM == geom.NumOfColumns-1 && CursorTop == 0) {
+		if (CursorBottom == geom.NumOfLines-1) {
+			geom.WinOrgY = geom.WinOrgY-n;
 			/* 最下行でだけ自動スクロールする */
-			if (cfg.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
-				NewOrgY = WinOrgY;
+			if (cfg.AutoScrollOnlyInBottomLine != 0 && geom.NewOrgY != 0) {
+				geom.NewOrgY = geom.WinOrgY;
 			}
 			BuffScroll(n,CursorBottom);
 			DispCountScroll(vt_src, n);
 			return;
 		}
-		else if (CursorY <= CursorBottom) {
+		else if (geom.CursorY <= CursorBottom) {
 			/* 最下行でだけ自動スクロールする */
-			if (cfg.AutoScrollOnlyInBottomLine != 0 && NewOrgY != 0) {
+			if (cfg.AutoScrollOnlyInBottomLine != 0 && geom.NewOrgY != 0) {
 				/* スクロールさせない場合の処理 */
-				WinOrgY = WinOrgY-n;
-				NewOrgY = WinOrgY;
+				geom.WinOrgY = geom.WinOrgY-n;
+				geom.NewOrgY = geom.WinOrgY;
 				BuffScroll(n,CursorBottom);
 				DispCountScroll(vt_src, n);
 			} else {
 				BuffScroll(n,CursorBottom);
-				DispScrollNLines(vt_src, WinOrgY, CursorBottom, n);
+				DispScrollNLines(vt_src, geom.WinOrgY, CursorBottom, n);
 			}
 			return;
 		}
 	}
 
-	if ((CursorTop<=CursorY) && (CursorY<=CursorBottom)) {
+	if ((CursorTop<=geom.CursorY) && (geom.CursorY<=CursorBottom)) {
 		if (CursorLeftM > 0)
 			extl = 1;
-		if (CursorRightM < NumOfColumns-1)
+		if (CursorRightM < geom.NumOfColumns-1)
 			extr = 1;
 		if (extl || extr)
-			EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorTop), CursorBottom-CursorTop+1);
+			EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+CursorTop), CursorBottom-CursorTop+1);
 
 		linelen = CursorRightM - CursorLeftM + 1;
-		DestPtr = GetLinePtr(PageStart+CursorTop) + (LONG)CursorLeftM;
+		DestPtr = GetLinePtr(geom.PageStart+CursorTop) + (LONG)CursorLeftM;
 		if (n<CursorBottom-CursorTop+1) {
-			SrcPtr = GetLinePtr(PageStart+CursorTop+n) + (LONG)CursorLeftM;
+			SrcPtr = GetLinePtr(geom.PageStart+CursorTop+n) + (LONG)CursorLeftM;
 			for (i = CursorTop+n ; i<=CursorBottom ; i++) {
 				CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 				SrcPtr = NextLinePtr(SrcPtr);
@@ -3598,7 +3598,7 @@ void BuffScrollNLines(int n)
 			memsetW(&(CodeBuffW[DestPtr]), 0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, linelen);
 			DestPtr = NextLinePtr(DestPtr);
 		}
-		if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1)
+		if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1)
 			BuffUpdateRect(CursorLeftM-extl, CursorTop, CursorRightM+extr, CursorBottom);
 		else
 			DispScrollNLines(vt_src, CursorTop, CursorBottom, n);
@@ -3615,29 +3615,29 @@ void BuffRegionScrollUpNLines(int n) {
 	}
 	UpdateStr();
 
-	if (CursorLeftM == 0 && CursorRightM == NumOfColumns-1 && CursorTop == 0) {
-		if (CursorBottom == NumOfLines-1) {
-			WinOrgY = WinOrgY-n;
+	if (CursorLeftM == 0 && CursorRightM == geom.NumOfColumns-1 && CursorTop == 0) {
+		if (CursorBottom == geom.NumOfLines-1) {
+			geom.WinOrgY = geom.WinOrgY-n;
 			BuffScroll(n,CursorBottom);
 			DispCountScroll(vt_src, n);
 		}
 		else {
 			BuffScroll(n,CursorBottom);
-			DispScrollNLines(vt_src, WinOrgY, CursorBottom, n);
+			DispScrollNLines(vt_src, geom.WinOrgY, CursorBottom, n);
 		}
 	}
 	else {
 		if (CursorLeftM > 0)
 			extl = 1;
-		if (CursorRightM < NumOfColumns-1)
+		if (CursorRightM < geom.NumOfColumns-1)
 			extr = 1;
 		if (extl || extr)
-			EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorTop), CursorBottom-CursorTop+1);
+			EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+CursorTop), CursorBottom-CursorTop+1);
 
-		DestPtr = GetLinePtr(PageStart+CursorTop) + CursorLeftM;
+		DestPtr = GetLinePtr(geom.PageStart+CursorTop) + CursorLeftM;
 		linelen = CursorRightM - CursorLeftM + 1;
 		if (n < CursorBottom - CursorTop + 1) {
-			SrcPtr = GetLinePtr(PageStart+CursorTop+n) + CursorLeftM;
+			SrcPtr = GetLinePtr(geom.PageStart+CursorTop+n) + CursorLeftM;
 			for (i = CursorTop+n ; i<=CursorBottom ; i++) {
 				CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 				SrcPtr = NextLinePtr(SrcPtr);
@@ -3652,7 +3652,7 @@ void BuffRegionScrollUpNLines(int n) {
 			DestPtr = NextLinePtr(DestPtr);
 		}
 
-		if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1) {
+		if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1) {
 			BuffUpdateRect(CursorLeftM-extl, CursorTop, CursorRightM+extr, CursorBottom);
 		}
 		else {
@@ -3673,15 +3673,15 @@ void BuffRegionScrollDownNLines(int n) {
 
 	if (CursorLeftM > 0)
 		extl = 1;
-	if (CursorRightM < NumOfColumns-1)
+	if (CursorRightM < geom.NumOfColumns-1)
 		extr = 1;
 	if (extl || extr)
-		EraseKanjiOnLRMargin(GetLinePtr(PageStart+CursorTop), CursorBottom-CursorTop+1);
+		EraseKanjiOnLRMargin(GetLinePtr(geom.PageStart+CursorTop), CursorBottom-CursorTop+1);
 
-	DestPtr = GetLinePtr(PageStart+CursorBottom) + CursorLeftM;
+	DestPtr = GetLinePtr(geom.PageStart+CursorBottom) + CursorLeftM;
 	linelen = CursorRightM - CursorLeftM + 1;
 	if (n < CursorBottom - CursorTop + 1) {
-		SrcPtr = GetLinePtr(PageStart+CursorBottom-n) + CursorLeftM;
+		SrcPtr = GetLinePtr(geom.PageStart+CursorBottom-n) + CursorLeftM;
 		for (i=CursorBottom-n ; i>=CursorTop ; i--) {
 			CellsMove(&(CodeBuffW[DestPtr]), &(CodeBuffW[SrcPtr]), linelen);
 			SrcPtr = PrevLinePtr(SrcPtr);
@@ -3696,7 +3696,7 @@ void BuffRegionScrollDownNLines(int n) {
 		DestPtr = PrevLinePtr(DestPtr);
 	}
 
-	if (CursorLeftM > 0 || CursorRightM < NumOfColumns-1) {
+	if (CursorLeftM > 0 || CursorRightM < geom.NumOfColumns-1) {
 		BuffUpdateRect(CursorLeftM-extl, CursorTop, CursorRightM+extr, CursorBottom);
 	}
 	else {
@@ -3711,8 +3711,8 @@ void BuffClearScreen(void)
 	}
 	else { /* clear main screen */
 		UpdateStr();
-		BuffScroll(NumOfLines-StatusLine,NumOfLines-1-StatusLine);
-		DispScrollNLines(vt_src, WinOrgY, NumOfLines - 1 - StatusLine, NumOfLines - StatusLine);
+		BuffScroll(geom.NumOfLines-StatusLine,geom.NumOfLines-1-StatusLine);
+		DispScrollNLines(vt_src, geom.WinOrgY, geom.NumOfLines - 1 - StatusLine, geom.NumOfLines - StatusLine);
 	}
 }
 
@@ -3725,10 +3725,10 @@ void BuffUpdateScroll(void)
 
 void CursorUpWithScroll(void)
 {
-	if (((0 < CursorY) && (CursorY < CursorTop)) || (CursorTop < CursorY)) {
-		MoveCursor(CursorX, CursorY - 1);
+	if (((0 < geom.CursorY) && (geom.CursorY < CursorTop)) || (CursorTop < geom.CursorY)) {
+		MoveCursor(geom.CursorX, geom.CursorY - 1);
 	}
-	else if (CursorY == CursorTop) {
+	else if (geom.CursorY == CursorTop) {
 		ScrollUp1Line();
 	}
 }
@@ -3847,7 +3847,7 @@ static void SearchCharPrev(
 					// 継続している,前の行の最後へ
 					sy--;
 					ptr = GetLinePtr(sy);
-					sx = NumOfColumns - 1;
+					sx = geom.NumOfColumns - 1;
 					sx = LeftHalfOfDBCS(ptr, sx);
 					b = CodeBuffW + ptr + sx;
 				}
@@ -3913,17 +3913,17 @@ static void SearchCharNext(
 		int py = sy;
 
 		// 次のキャラクタへ
-		if (sx + b->cell > NumOfColumns - 1) {
+		if (sx + b->cell > geom.NumOfColumns - 1) {
 			// 次に進むと行末?
 			if (!line_continue) {
 				// 検索打ち切り
-				sx = NumOfColumns - 1;
+				sx = geom.NumOfColumns - 1;
 				break;
 			}
 			else {
 				// 下の行が継続している?
 				b += b->cell - 1;
-				if (sy < BuffEnd && (b->attr & AttrLineContinued)) {
+				if (sy < geom.BuffEnd && (b->attr & AttrLineContinued)) {
 					// 継続している
 					sx = 0;
 					sy++;
@@ -3932,7 +3932,7 @@ static void SearchCharNext(
 				}
 				else {
 					// 検索打ち切り
-					sx = NumOfColumns - 1;
+					sx = geom.NumOfColumns - 1;
 					break;
 				}
 			}
@@ -3940,9 +3940,9 @@ static void SearchCharNext(
 		else {
 			sx += b->cell;
 			b += b->cell;
-			if (sx > NumOfColumns - 1) {
+			if (sx > geom.NumOfColumns - 1) {
 				// はみ出すのはおかしい
-				sx = NumOfColumns - 1;
+				sx = geom.NumOfColumns - 1;
 			}
 		}
 
@@ -4005,7 +4005,7 @@ static void BuffUpdateLine(const POINT *start, const POINT *end)
 	}
 	for (j = start->y; j <= end->y; j++) {
 		IStart = 0;
-		IEnd = NumOfColumns - 1;
+		IEnd = geom.NumOfColumns - 1;
 		if (j == start->y) {
 			IStart = start->x;
 		}
@@ -4013,9 +4013,9 @@ static void BuffUpdateLine(const POINT *start, const POINT *end)
 			IEnd = end->x;
 		}
 
-		if ((IEnd >= IStart) && (j >= PageStart + WinOrgY) &&
-			(j < PageStart + WinOrgY + WinHeight)) {
-			BuffUpdateRect(IStart, j - PageStart, IEnd, j - PageStart);
+		if ((IEnd >= IStart) && (j >= geom.PageStart + geom.WinOrgY) &&
+			(j < geom.PageStart + geom.WinOrgY + geom.WinHeight)) {
+			BuffUpdateRect(IStart, j - geom.PageStart, IEnd, j - geom.PageStart);
 		}
 	}
 	if (Caret) {
@@ -4064,8 +4064,8 @@ static void ChangeSelectRegion(void)
 		if (Caret) {
 			CaretOff(vt_src);
 		}
-		BuffUpdateRect(TempStart.x,TempStart.y-PageStart,
-		               TempEnd.x,TempEnd.y-PageStart);
+		BuffUpdateRect(TempStart.x,TempStart.y-geom.PageStart,
+		               TempEnd.x,TempEnd.y-geom.PageStart);
 		if (Caret) {
 			CaretOn(vt_src);
 		}
@@ -4104,16 +4104,16 @@ BOOL BuffUrlDblClk(int Xw, int Yw)
 	CaretOff(vt_src);
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &Y, NULL);
-	Y = Y + PageStart;
-	if ((Y<0) || (Y>=BuffEnd)) {
+	Y = Y + geom.PageStart;
+	if ((Y<0) || (Y>=geom.BuffEnd)) {
 		return 0;
 	}
 	if (X<0) X = 0;
-	if (X>=NumOfColumns) {
-		X = NumOfColumns-1;
+	if (X>=geom.NumOfColumns) {
+		X = geom.NumOfColumns-1;
 	}
 
-	if ((Y>=0) && (Y<BuffEnd)) {
+	if ((Y>=0) && (Y<geom.BuffEnd)) {
 		LockBuffer();
 		TmpPtr = GetLinePtr(Y);
 		/* start - ishizaki */
@@ -4249,19 +4249,19 @@ void BuffDblClk(int Xw, int Yw)
 	}
 
 	DispConvWinToScreen(vt_src, Xw,Yw,&X,&Y,NULL);
-	Y = Y + PageStart;
-	if ((Y<0) || (Y>=BuffEnd)) {
+	Y = Y + geom.PageStart;
+	if ((Y<0) || (Y>=geom.BuffEnd)) {
 		return;
 	}
 	if (X<0) X = 0;
-	if (X>=NumOfColumns) X = NumOfColumns-1;
+	if (X>=geom.NumOfColumns) X = geom.NumOfColumns-1;
 
 	BoxSelect = FALSE;
 	LockBuffer();
 	SelectEnd = SelectStart;
 	ChangeSelectRegion();
 
-	if ((Y>=0) && (Y<BuffEnd)) {
+	if ((Y>=0) && (Y<geom.BuffEnd)) {
 		TmpPtr = GetLinePtr(Y);
 
 		IStart = X;
@@ -4306,8 +4306,8 @@ void BuffTplClk(int Yw)
 	CaretOff(vt_src);
 
 	DispConvWinToScreen(vt_src, 0, Yw, NULL, &Y, NULL);
-	Y = Y + PageStart;
-	if ((Y<0) || (Y>=BuffEnd)) {
+	Y = Y + geom.PageStart;
+	if ((Y<0) || (Y>=geom.BuffEnd)) {
 		return;
 	}
 
@@ -4316,7 +4316,7 @@ void BuffTplClk(int Yw)
 	ChangeSelectRegion();
 	SelectStart.x = 0;
 	SelectStart.y = Y;
-	SelectEnd.x = NumOfColumns;
+	SelectEnd.x = geom.NumOfColumns;
 	SelectEnd.y = Y;
 	DblClkStart = SelectStart;
 	DblClkEnd = SelectEnd;
@@ -4340,13 +4340,13 @@ static void BuffSeveralPagesSelect(int Xw, int Yw)
 	BOOL Right;
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &Y, &Right);
-	Y = Y + PageStart;
-	if ((Y<0) || (Y>=BuffEnd)) {
+	Y = Y + geom.PageStart;
+	if ((Y<0) || (Y>=geom.BuffEnd)) {
 		return;
 	}
 	if (X<0) X = 0;
-	if (X>=NumOfColumns) {
-		X = NumOfColumns-1;
+	if (X>=geom.NumOfColumns) {
+		X = geom.NumOfColumns-1;
 	}
 
 	POINT pt = GetCharCell(X, Y, Right);
@@ -4423,13 +4423,13 @@ void BuffStartSelect(int Xw, int Yw, BOOL Box, BOOL Shift)
 	BOOL Right;
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &Y, &Right);
-	Y = Y + PageStart;
-	if ((Y<0) || (Y>=BuffEnd)) {
+	Y = Y + geom.PageStart;
+	if ((Y<0) || (Y>=geom.BuffEnd)) {
 		return;
 	}
 	if (X<0) X = 0;
-	if (X>=NumOfColumns) {
-		X = NumOfColumns-1;
+	if (X>=geom.NumOfColumns) {
+		X = geom.NumOfColumns-1;
 	}
 
 	// 選択領域解除
@@ -4481,15 +4481,15 @@ void BuffChangeSelect(int Xw, int Yw, int NClick)
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &Y, &Right);
 
-	Y = Y + PageStart;
+	Y = Y + geom.PageStart;
 
 	if (X<0) X = 0;
-	if (X > NumOfColumns) {
-		X = NumOfColumns;
+	if (X > geom.NumOfColumns) {
+		X = geom.NumOfColumns;
 	}
 	if (Y < 0) Y = 0;
-	if (Y >= BuffEnd) {
-		Y = BuffEnd - 1;
+	if (Y >= geom.BuffEnd) {
+		Y = geom.BuffEnd - 1;
 	}
 
 	LockBuffer();
@@ -4550,7 +4550,7 @@ void BuffChangeSelect(int Xw, int Yw, int NClick)
 				SelectEnd.x = X;
 				SelectEnd.y = Y;
 			}
-			SelectEnd.x = NumOfColumns;
+			SelectEnd.x = geom.NumOfColumns;
 		}
 		else {
 			if (SelectStart.x==DblClkStart.x) {
@@ -4634,18 +4634,18 @@ void BuffChangeWinSize(int Nx, int Ny)
 	}
 
 	if ((cfg.TermIsWin>0) &&
-	    ((Nx!=NumOfColumns) || (Ny!=NumOfLines))) {
+	    ((Nx!=geom.NumOfColumns) || (Ny!=geom.NumOfLines))) {
 		LockBuffer();
 		BuffChangeTerminalSize(Nx,Ny-StatusLine);
 		UnlockBuffer();
-		Nx = NumOfColumns;
-		Ny = NumOfLines;
+		Nx = geom.NumOfColumns;
+		Ny = geom.NumOfLines;
 	}
-	if (Nx>NumOfColumns) {
-		Nx = NumOfColumns;
+	if (Nx>geom.NumOfColumns) {
+		Nx = geom.NumOfColumns;
 	}
-	if (Ny>BuffEnd) {
-		Ny = BuffEnd;
+	if (Ny>geom.BuffEnd) {
+		Ny = geom.BuffEnd;
 	}
 	DispChangeWinSize(vt_src, Nx, Ny);
 }
@@ -4676,7 +4676,7 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 	}
 
 	St = isCursorOnStatusLine;
-	if ((Nx!=NumOfColumns) || (Ny!=NumOfLines)) {
+	if ((Nx!=geom.NumOfColumns) || (Ny!=geom.NumOfLines)) {
 		if ((cfg.ScrollBuffSize < Ny) ||
 		    (cfg.EnableScrollBuff==0)) {
 			Nb = Ny;
@@ -4695,68 +4695,68 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 			Ny = NumOfLinesInBuff;
 		}
 
-		if ((cfg.TermFlag & TF_CLEARONRESIZE) == 0 && Ny != NumOfLines) {
-			if (Ny > NumOfLines) {
-				CursorY += Ny - NumOfLines;
-				if (Ny > BuffEnd) {
-					CursorY -= Ny - BuffEnd;
-					BuffEnd = Ny;
+		if ((cfg.TermFlag & TF_CLEARONRESIZE) == 0 && Ny != geom.NumOfLines) {
+			if (Ny > geom.NumOfLines) {
+				geom.CursorY += Ny - geom.NumOfLines;
+				if (Ny > geom.BuffEnd) {
+					geom.CursorY -= Ny - geom.BuffEnd;
+					geom.BuffEnd = Ny;
 				}
 			}
 			else {
-				if (Ny  > CursorY + StatusLine + 1) {
-					BuffEnd -= NumOfLines - Ny;
+				if (Ny  > geom.CursorY + StatusLine + 1) {
+					geom.BuffEnd -= geom.NumOfLines - Ny;
 				}
 				else {
-					BuffEnd -= NumOfLines - 1 - StatusLine - CursorY;
-					CursorY = Ny - 1 - StatusLine;
+					geom.BuffEnd -= geom.NumOfLines - 1 - StatusLine - geom.CursorY;
+					geom.CursorY = Ny - 1 - StatusLine;
 				}
 			}
 		}
 
-		NumOfColumns = Nx;
-		NumOfLines = Ny;
+		geom.NumOfColumns = Nx;
+		geom.NumOfLines = Ny;
 		Op.SetTerminalWidth(Nx);
 		Op.SetTerminalHeight(Ny-StatusLine);
 
-		PageStart = BuffEnd - NumOfLines;
+		geom.PageStart = geom.BuffEnd - geom.NumOfLines;
 	}
 
 	if (cfg.TermFlag & TF_CLEARONRESIZE) {
-		BuffScroll(NumOfLines,NumOfLines-1);
+		BuffScroll(geom.NumOfLines,geom.NumOfLines-1);
 	}
 
 	/* Set Cursor */
 	if (cfg.TermFlag & TF_CLEARONRESIZE) {
-		CursorX = 0;
-		CursorRightM = NumOfColumns-1;
+		geom.CursorX = 0;
+		CursorRightM = geom.NumOfColumns-1;
 		if (St) {
-			CursorY = NumOfLines-1;
-			CursorTop = CursorY;
-			CursorBottom = CursorY;
+			geom.CursorY = geom.NumOfLines-1;
+			CursorTop = geom.CursorY;
+			CursorBottom = geom.CursorY;
 		}
 		else {
-			CursorY = 0;
+			geom.CursorY = 0;
 			CursorTop = 0;
-			CursorBottom = NumOfLines-1-StatusLine;
+			CursorBottom = geom.NumOfLines-1-StatusLine;
 		}
 	}
 	else {
-		CursorRightM = NumOfColumns-1;
-		if (CursorX >= NumOfColumns) {
-			CursorX = NumOfColumns - 1;
+		CursorRightM = geom.NumOfColumns-1;
+		if (geom.CursorX >= geom.NumOfColumns) {
+			geom.CursorX = geom.NumOfColumns - 1;
 		}
 		if (St) {
-			CursorY = NumOfLines-1;
-			CursorTop = CursorY;
-			CursorBottom = CursorY;
+			geom.CursorY = geom.NumOfLines-1;
+			CursorTop = geom.CursorY;
+			CursorBottom = geom.CursorY;
 		}
 		else {
-			if (CursorY >= NumOfLines - StatusLine) {
-				CursorY = NumOfLines - 1 - StatusLine;
+			if (geom.CursorY >= geom.NumOfLines - StatusLine) {
+				geom.CursorY = geom.NumOfLines - 1 - StatusLine;
 			}
 			CursorTop = 0;
-			CursorBottom = NumOfLines - 1 - StatusLine;
+			CursorBottom = geom.NumOfLines - 1 - StatusLine;
 		}
 	}
 	CursorLeftM = 0;
@@ -4767,39 +4767,39 @@ void BuffChangeTerminalSize(int Nx, int Ny)
 	Selected = FALSE;
 
 	/* Tab stops */
-	NTabStops = (NumOfColumns-1) >> 3;
+	NTabStops = (geom.NumOfColumns-1) >> 3;
 	for (i = 1 ; i <= NTabStops ; i++) {
 		TabStops[i-1] = i*8;
 	}
 
 	if (cfg.TermIsWin>0) {
-		W = NumOfColumns;
-		H = NumOfLines;
+		W = geom.NumOfColumns;
+		H = geom.NumOfLines;
 	}
 	else {
-		W = WinWidth;
-		H = WinHeight;
+		W = geom.WinWidth;
+		H = geom.WinHeight;
 		if ((cfg.AutoWinResize>0) ||
-		    (NumOfColumns < W)) {
-			W = NumOfColumns;
+		    (geom.NumOfColumns < W)) {
+			W = geom.NumOfColumns;
 		}
 		if (cfg.AutoWinResize>0) {
-			H = NumOfLines;
+			H = geom.NumOfLines;
 		}
-		else if (BuffEnd < H) {
-			H = BuffEnd;
+		else if (geom.BuffEnd < H) {
+			H = geom.BuffEnd;
 		}
 	}
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 
 	/* Change Window Size */
 	BuffChangeWinSize(W,H);
-	WinOrgY = -NumOfLines;
+	geom.WinOrgY = -geom.NumOfLines;
 
 	DispScrollHomePos(vt_src);
 
-	Op.NotifyWinSize(NumOfColumns, NumOfLines-StatusLine);
+	Op.NotifyWinSize(geom.NumOfColumns, geom.NumOfLines-StatusLine);
 }
 
 void ChangeWin(void)
@@ -4810,27 +4810,27 @@ void ChangeWin(void)
 	/* Change buffer */
 	if (cfg.EnableScrollBuff>0) {
 		LONG scroll_buff_size = cfg.ScrollBuffSize;
-		if (scroll_buff_size < NumOfLines) {
-			scroll_buff_size = NumOfLines;
+		if (scroll_buff_size < geom.NumOfLines) {
+			scroll_buff_size = geom.NumOfLines;
 			Op.SetScrollBuffSize(scroll_buff_size);
 		}
 		Ny = scroll_buff_size;
 	}
 	else {
-		Ny = NumOfLines;
+		Ny = geom.NumOfLines;
 	}
 
 	if (NumOfLinesInBuff!=Ny) {
-		ChangeBuffer(NumOfColumns,Ny);
+		ChangeBuffer(geom.NumOfColumns,Ny);
 		if (cfg.EnableScrollBuff>0) {
 			Op.SetScrollBuffSize(NumOfLinesInBuff);
 		}
 
-		if (BuffEnd < WinHeight) {
-			BuffChangeWinSize(WinWidth,BuffEnd);
+		if (geom.BuffEnd < geom.WinHeight) {
+			BuffChangeWinSize(geom.WinWidth,geom.BuffEnd);
 		}
 		else {
-			BuffChangeWinSize(WinWidth,WinHeight);
+			BuffChangeWinSize(geom.WinWidth,geom.WinHeight);
 		}
 	}
 
@@ -4840,14 +4840,14 @@ void ChangeWin(void)
 void ClearBuffer(void)
 {
 	/* Reset buffer */
-	PageStart = 0;
+	geom.PageStart = 0;
 	BuffStartAbs = 0;
-	BuffEnd = NumOfLines;
-	if (NumOfLines==NumOfLinesInBuff) {
+	geom.BuffEnd = geom.NumOfLines;
+	if (geom.NumOfLines==NumOfLinesInBuff) {
 		BuffEndAbs = 0;
 	}
 	else {
-		BuffEndAbs = NumOfLines;
+		BuffEndAbs = geom.NumOfLines;
 	}
 
 	SelectStart.x = 0;
@@ -4860,18 +4860,18 @@ void ClearBuffer(void)
 	memsetW(&CodeBuffW[0],0x20, CurCharAttr.Fore, CurCharAttr.Back, AttrDefault, CurCharAttr.Attr2 & Attr2ColorMask, BufferSize);
 
 	/* Home position */
-	CursorX = 0;
-	CursorY = 0;
-	WinOrgX = 0;
-	WinOrgY = 0;
-	NewOrgX = 0;
-	NewOrgY = 0;
+	geom.CursorX = 0;
+	geom.CursorY = 0;
+	geom.WinOrgX = 0;
+	geom.WinOrgY = 0;
+	geom.NewOrgX = 0;
+	geom.NewOrgY = 0;
 
 	/* Top/bottom margin */
 	CursorTop = 0;
-	CursorBottom = NumOfLines - 1;
+	CursorBottom = geom.NumOfLines - 1;
 	CursorLeftM = 0;
-	CursorRightM = NumOfColumns - 1;
+	CursorRightM = geom.NumOfColumns - 1;
 
 	StrChangeCount = 0;
 
@@ -4882,20 +4882,20 @@ void SetTabStop(void)
 {
 	int i,j;
 
-	if (NTabStops<NumOfColumns) {
+	if (NTabStops<geom.NumOfColumns) {
 		i = 0;
-		while ((TabStops[i]<CursorX) && (i<NTabStops)) {
+		while ((TabStops[i]<geom.CursorX) && (i<NTabStops)) {
 			i++;
 		}
 
-		if ((i<NTabStops) && (TabStops[i]==CursorX)) {
+		if ((i<NTabStops) && (TabStops[i]==geom.CursorX)) {
 			return;
 		}
 
 		for (j=NTabStops ; j>=i+1 ; j--) {
 			TabStops[j] = TabStops[j-1];
 		}
-		TabStops[i] = CursorX;
+		TabStops[i] = geom.CursorX;
 		NTabStops++;
 	}
 }
@@ -4907,21 +4907,21 @@ void CursorForwardTab(int count, BOOL AutoWrapMode) {
 
 	WrapState = Wrap;
 
-	if (CursorX > CursorRightM || CursorY < CursorTop || CursorY > CursorBottom)
-		LineEnd = NumOfColumns - 1;
+	if (geom.CursorX > CursorRightM || geom.CursorY < CursorTop || geom.CursorY > CursorBottom)
+		LineEnd = geom.NumOfColumns - 1;
 	else
 		LineEnd = CursorRightM;
 
-	for (i=0; i<NTabStops && TabStops[i] <= CursorX; i++)
+	for (i=0; i<NTabStops && TabStops[i] <= geom.CursorX; i++)
 		;
 
 	i += count - 1;
 
 	if (i < NTabStops && TabStops[i] <= LineEnd) {
-		MoveCursor(TabStops[i], CursorY);
+		MoveCursor(TabStops[i], geom.CursorY);
 	}
 	else {
-		MoveCursor(LineEnd, CursorY);
+		MoveCursor(LineEnd, geom.CursorY);
 		if (!cfg.VTCompatTab) {
 			Wrap = AutoWrapMode;
 		}
@@ -4934,19 +4934,19 @@ void CursorForwardTab(int count, BOOL AutoWrapMode) {
 void CursorBackwardTab(int count) {
 	int i, LineStart;
 
-	if (CursorX < CursorLeftM || CursorY < CursorTop || CursorY > CursorBottom)
+	if (geom.CursorX < CursorLeftM || geom.CursorY < CursorTop || geom.CursorY > CursorBottom)
 		LineStart = 0;
 	else
 		LineStart = CursorLeftM;
 
-	for (i=0; i<NTabStops && TabStops[i] < CursorX; i++)
+	for (i=0; i<NTabStops && TabStops[i] < geom.CursorX; i++)
 		;
 
 	if (i < count || TabStops[i-count] < LineStart) {
-		MoveCursor(LineStart, CursorY);
+		MoveCursor(LineStart, geom.CursorY);
 	}
 	else {
-		MoveCursor(TabStops[i-count], CursorY);
+		MoveCursor(TabStops[i-count], geom.CursorY);
 	}
 }
 
@@ -4963,10 +4963,10 @@ void ClearTabStop(int Ps)
 		case 0:
 			if (cfg.TabStopFlag & TABF_TBC0) {
 				i = 0;
-				while ((TabStops[i]!=CursorX) && (i<NTabStops-1)) {
+				while ((TabStops[i]!=geom.CursorX) && (i<NTabStops-1)) {
 					i++;
 				}
-				if (TabStops[i] == CursorX) {
+				if (TabStops[i] == geom.CursorX) {
 					NTabStops--;
 					for (j=i ; j<=NTabStops ; j++) {
 						TabStops[j] = TabStops[j+1];
@@ -4995,13 +4995,13 @@ void ShowStatusLine(int Show)
 	StatusLine = Show;
 
 	if (StatusLine==0) {
-		NumOfLines--;
-		BuffEnd--;
-		BuffEndAbs=PageStart+NumOfLines;
+		geom.NumOfLines--;
+		geom.BuffEnd--;
+		BuffEndAbs=geom.PageStart+geom.NumOfLines;
 		if (BuffEndAbs >= NumOfLinesInBuff) {
 			BuffEndAbs = BuffEndAbs-NumOfLinesInBuff;
 		}
-		Ny = NumOfLines;
+		Ny = geom.NumOfLines;
 	}
 	else {
 		Ny = cfg.TerminalHeight+1;
@@ -5015,7 +5015,7 @@ void ShowStatusLine(int Show)
 		Nb = cfg.ScrollBuffSize;
 	}
 
-	if (! ChangeBuffer(NumOfColumns,Nb)) {
+	if (! ChangeBuffer(geom.NumOfColumns,Nb)) {
 		return;
 	}
 	if (cfg.EnableScrollBuff>0) {
@@ -5025,41 +5025,41 @@ void ShowStatusLine(int Show)
 		Ny = NumOfLinesInBuff;
 	}
 
-	NumOfLines = Ny;
+	geom.NumOfLines = Ny;
 	Op.SetTerminalHeight(Ny-StatusLine);
 
 	if (StatusLine==1) {
-		BuffScroll(1,NumOfLines-1);
+		BuffScroll(1,geom.NumOfLines-1);
 	}
 
 	if (cfg.TermIsWin>0) {
-		W = NumOfColumns;
-		H = NumOfLines;
+		W = geom.NumOfColumns;
+		H = geom.NumOfLines;
 	}
 	else {
-		W = WinWidth;
-		H = WinHeight;
+		W = geom.WinWidth;
+		H = geom.WinHeight;
 		if ((cfg.AutoWinResize>0) ||
-		    (NumOfColumns < W)) {
-			W = NumOfColumns;
+		    (geom.NumOfColumns < W)) {
+			W = geom.NumOfColumns;
 		}
 		if (cfg.AutoWinResize>0) {
-			H = NumOfLines;
+			H = geom.NumOfLines;
 		}
-		else if (BuffEnd < H) {
-			H = BuffEnd;
+		else if (geom.BuffEnd < H) {
+			H = geom.BuffEnd;
 		}
 	}
 
-	PageStart = BuffEnd-NumOfLines;
-	NewLine(PageStart+CursorY);
+	geom.PageStart = geom.BuffEnd-geom.NumOfLines;
+	NewLine(geom.PageStart+geom.CursorY);
 
 	/* Change Window Size */
 	BuffChangeWinSize(W,H);
-	WinOrgY = -NumOfLines;
+	geom.WinOrgY = -geom.NumOfLines;
 	DispScrollHomePos(vt_src);
 
-	MoveCursor(CursorX,CursorY);
+	MoveCursor(geom.CursorX,geom.CursorY);
 }
 
 void BuffLineContinued(BOOL mode)
@@ -5088,22 +5088,22 @@ void BuffSaveScreen(void)
 	int i;
 
 	if (SaveBuff == NULL) {
-		ScrSize = NumOfColumns * NumOfLines;	// 1画面分のバッファの保存数
+		ScrSize = geom.NumOfColumns * geom.NumOfLines;	// 1画面分のバッファの保存数
 		// 全画面分のバイト数
 		SaveBuff = calloc(ScrSize, sizeof(buff_char_t));
 		if (SaveBuff != NULL) {
 			CodeDestW = (buff_char_t *)SaveBuff;
 
-			SaveBuffX = NumOfColumns;
-			SaveBuffY = NumOfLines;
+			SaveBuffX = geom.NumOfColumns;
+			SaveBuffY = geom.NumOfLines;
 
-			SrcPtr = GetLinePtr(PageStart);
+			SrcPtr = GetLinePtr(geom.PageStart);
 			DestPtr = 0;
 
-			for (i=0; i<NumOfLines; i++) {
-				CellsCopy(&CodeDestW[DestPtr], &CodeBuffW[SrcPtr], NumOfColumns);
+			for (i=0; i<geom.NumOfLines; i++) {
+				CellsCopy(&CodeDestW[DestPtr], &CodeBuffW[SrcPtr], geom.NumOfColumns);
 				SrcPtr = NextLinePtr(SrcPtr);
-				DestPtr += NumOfColumns;
+				DestPtr += geom.NumOfColumns;
 			}
 		}
 	}
@@ -5120,11 +5120,11 @@ void BuffRestoreScreen(void)
 	if (SaveBuff != NULL) {
 		CodeSrcW = (buff_char_t*)SaveBuff;
 
-		CopyX = (SaveBuffX > NumOfColumns) ? NumOfColumns : SaveBuffX;
-		CopyY = (SaveBuffY > NumOfLines) ? NumOfLines : SaveBuffY;
+		CopyX = (SaveBuffX > geom.NumOfColumns) ? geom.NumOfColumns : SaveBuffX;
+		CopyY = (SaveBuffY > geom.NumOfLines) ? geom.NumOfLines : SaveBuffY;
 
 		SrcPtr = 0;
-		DestPtr = GetLinePtr(PageStart);
+		DestPtr = GetLinePtr(geom.PageStart);
 
 		for (i=0; i<CopyY; i++) {
 			CellsCopy(&CodeBuffW[DestPtr], &CodeSrcW[SrcPtr], CopyX);
@@ -5135,7 +5135,7 @@ void BuffRestoreScreen(void)
 			SrcPtr += SaveBuffX;
 			DestPtr = NextLinePtr(DestPtr);
 		}
-		BuffUpdateRect(WinOrgX,WinOrgY,WinOrgX+WinWidth-1,WinOrgY+WinHeight-1);
+		BuffUpdateRect(geom.WinOrgX,geom.WinOrgY,geom.WinOrgX+geom.WinWidth-1,geom.WinOrgY+geom.WinHeight-1);
 
 		BuffDiscardSavedScreen();
 	}
@@ -5167,25 +5167,25 @@ void BuffSelectedEraseCurToEnd(void)
 	int offset;
 	int i, j, YEnd;
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 
 	if (cfg.KanjiCode == IdSJIS ||
 		cfg.KanjiCode == IdEUC ||
 		cfg.KanjiCode == IdJIS ||
 		cfg.KanjiCode == IdKoreanCP949 ||
 		cfg.KanjiCode == IdUTF8) {
-		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
+		if (!(CodeLineW[geom.CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(1); /* if cursor is on right half of a kanji, erase the kanji */
 		}
 	}
-	offset = CursorX;
-	TmpPtr = GetLinePtr(PageStart+CursorY);
-	YEnd = NumOfLines-1;
+	offset = geom.CursorX;
+	TmpPtr = GetLinePtr(geom.PageStart+geom.CursorY);
+	YEnd = geom.NumOfLines-1;
 	if (StatusLine && !isCursorOnStatusLine) {
 		YEnd--;
 	}
-	for (i = CursorY ; i <= YEnd ; i++) {
-		for (j = TmpPtr + offset; j < TmpPtr + NumOfColumns - offset; j++) {
+	for (i = geom.CursorY ; i <= YEnd ; i++) {
+		for (j = TmpPtr + offset; j < TmpPtr + geom.NumOfColumns - offset; j++) {
 			if (!(CodeLineW[j].attr2 & Attr2Protect)) {
 				BuffSetChar(&CodeBuffW[j], 0x20, 'H');
 				CodeLineW[j].attr &= AttrSgrMask;
@@ -5195,7 +5195,7 @@ void BuffSelectedEraseCurToEnd(void)
 		TmpPtr = NextLinePtr(TmpPtr);
 	}
 	/* update window */
-	BuffUpdateRect(0, CursorY, NumOfColumns, YEnd);
+	BuffUpdateRect(0, geom.CursorY, geom.NumOfColumns, YEnd);
 }
 
 void BuffSelectedEraseHomeToCur(void)
@@ -5207,27 +5207,27 @@ void BuffSelectedEraseHomeToCur(void)
 	int offset;
 	int i, j, YHome;
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 	if (cfg.KanjiCode == IdSJIS ||
 		cfg.KanjiCode == IdEUC ||
 		cfg.KanjiCode == IdJIS ||
 		cfg.KanjiCode == IdKoreanCP949 ||
 		cfg.KanjiCode == IdUTF8) {
-		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
+		if (!(CodeLineW[geom.CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(0); /* if cursor is on left half of a kanji, erase the kanji */
 		}
 	}
-	offset = NumOfColumns;
+	offset = geom.NumOfColumns;
 	if (isCursorOnStatusLine) {
-		YHome = CursorY;
+		YHome = geom.CursorY;
 	}
 	else {
 		YHome = 0;
 	}
-	TmpPtr = GetLinePtr(PageStart+YHome);
-	for (i = YHome ; i <= CursorY ; i++) {
-		if (i==CursorY) {
-			offset = CursorX+1;
+	TmpPtr = GetLinePtr(geom.PageStart+YHome);
+	for (i = YHome ; i <= geom.CursorY ; i++) {
+		if (i==geom.CursorY) {
+			offset = geom.CursorX+1;
 		}
 		for (j = TmpPtr; j < TmpPtr + offset; j++) {
 			if (!(CodeLineW[j].attr2 & Attr2Protect)) {
@@ -5239,7 +5239,7 @@ void BuffSelectedEraseHomeToCur(void)
 	}
 
 	/* update window */
-	BuffUpdateRect(0, YHome, NumOfColumns, CursorY);
+	BuffUpdateRect(0, YHome, geom.NumOfColumns, geom.CursorY);
 }
 
 void BuffSelectedEraseScreen() {
@@ -5252,11 +5252,11 @@ void BuffSelectiveEraseBox(int XStart, int YStart, int XEnd, int YEnd)
 	int C, i, j;
 	LONG Ptr;
 
-	if (XEnd>NumOfColumns-1) {
-		XEnd = NumOfColumns-1;
+	if (XEnd>geom.NumOfColumns-1) {
+		XEnd = geom.NumOfColumns-1;
 	}
-	if (YEnd>NumOfLines-1-StatusLine) {
-		YEnd = NumOfLines-1-StatusLine;
+	if (YEnd>geom.NumOfLines-1-StatusLine) {
+		YEnd = geom.NumOfLines-1-StatusLine;
 	}
 	if (XStart>XEnd) {
 		return;
@@ -5265,7 +5265,7 @@ void BuffSelectiveEraseBox(int XStart, int YStart, int XEnd, int YEnd)
 		return;
 	}
 	C = XEnd-XStart+1;
-	Ptr = GetLinePtr(PageStart+YStart);
+	Ptr = GetLinePtr(geom.PageStart+YStart);
 	for (i=YStart; i<=YEnd; i++) {
 		if ((XStart>0) &&
 		    ((CodeBuffW[Ptr+XStart-1].attr & AttrKanji) != 0) &&
@@ -5273,7 +5273,7 @@ void BuffSelectiveEraseBox(int XStart, int YStart, int XEnd, int YEnd)
 			BuffSetChar(&CodeBuffW[Ptr+XStart-1], 0x20, 'H');
 			CodeBuffW[Ptr+XStart-1].attr &= AttrSgrMask;
 		}
-		if ((XStart+C<NumOfColumns) &&
+		if ((XStart+C<geom.NumOfColumns) &&
 		    ((CodeBuffW[Ptr+XStart+C-1].attr & AttrKanji) != 0) &&
 		    ((CodeBuffW[Ptr+XStart+C-1].attr2 & Attr2Protect) == 0)) {
 			BuffSetChar(&CodeBuffW[Ptr+XStart+C], 0x20, 'H');
@@ -5309,12 +5309,12 @@ void BuffSelectedEraseCharsInLine(int XStart, int Count)
 		cfg.KanjiCode == IdJIS ||
 		cfg.KanjiCode == IdKoreanCP949 ||
 		cfg.KanjiCode == IdUTF8) {
-		if (!(CodeLineW[CursorX].attr2 & Attr2Protect)) {
+		if (!(CodeLineW[geom.CursorX].attr2 & Attr2Protect)) {
 			EraseKanji(1); /* if cursor is on right half of a kanji, erase the kanji */
 		}
 	}
 
-	NewLine(PageStart+CursorY);
+	NewLine(geom.PageStart+geom.CursorY);
 	for (i=XStart; i < XStart + Count; i++) {
 		if (!(CodeLineW[i].attr2 & Attr2Protect)) {
 			BuffSetChar(&CodeLineW[i], 0x20, 'H');
@@ -5327,12 +5327,12 @@ void BuffSelectedEraseCharsInLine(int XStart, int Count)
 			BuffLineContinued(TRUE);
 		}
 
-		if (XStart + Count >= NumOfColumns) {
+		if (XStart + Count >= geom.NumOfColumns) {
 			CodeBuffW[NextLinePtr(LinePtr)].attr &= ~AttrLineContinued;
 		}
 	}
 
-	BuffUpdateRect(XStart, CursorY, XStart+Count, CursorY);
+	BuffUpdateRect(XStart, geom.CursorY, XStart+Count, geom.CursorY);
 }
 
 void BuffScrollLeft(int count)
@@ -5342,7 +5342,7 @@ void BuffScrollLeft(int count)
 
 	UpdateStr();
 
-	LPtr = GetLinePtr(PageStart + CursorTop);
+	LPtr = GetLinePtr(geom.PageStart + CursorTop);
 	MoveLen = CursorRightM - CursorLeftM + 1 - count;
 	for (i = CursorTop; i <= CursorBottom; i++) {
 		Ptr = LPtr + CursorLeftM;
@@ -5350,7 +5350,7 @@ void BuffScrollLeft(int count)
 		if (CodeBuffW[LPtr+CursorRightM].attr & AttrKanji) {
 			BuffSetChar(&CodeBuffW[LPtr+CursorRightM], 0x20, 'H');
 			CodeBuffW[LPtr+CursorRightM].attr &= ~AttrKanji;
-			if (CursorRightM < NumOfColumns-1) {
+			if (CursorRightM < geom.NumOfColumns-1) {
 				BuffSetChar(&CodeBuffW[LPtr+CursorRightM+1], 0x20, 'H');
 			}
 		}
@@ -5371,7 +5371,7 @@ void BuffScrollLeft(int count)
 		LPtr = NextLinePtr(LPtr);
 	}
 
-	BuffUpdateRect(CursorLeftM-(CursorLeftM>0), CursorTop, CursorRightM+(CursorRightM<NumOfColumns-1), CursorBottom);
+	BuffUpdateRect(CursorLeftM-(CursorLeftM>0), CursorTop, CursorRightM+(CursorRightM<geom.NumOfColumns-1), CursorBottom);
 }
 
 void BuffScrollRight(int count)
@@ -5381,12 +5381,12 @@ void BuffScrollRight(int count)
 
 	UpdateStr();
 
-	LPtr = GetLinePtr(PageStart + CursorTop);
+	LPtr = GetLinePtr(geom.PageStart + CursorTop);
 	MoveLen = CursorRightM - CursorLeftM + 1 - count;
 	for (i = CursorTop; i <= CursorBottom; i++) {
 		Ptr = LPtr + CursorLeftM;
 
-		if (CursorRightM < NumOfColumns-1 && CodeBuffW[LPtr+CursorRightM].attr & AttrKanji) {
+		if (CursorRightM < geom.NumOfColumns-1 && CodeBuffW[LPtr+CursorRightM].attr & AttrKanji) {
 			BuffSetChar(&CodeBuffW[LPtr+CursorRightM+1], 0x20, 'H');
 		}
 
@@ -5408,7 +5408,7 @@ void BuffScrollRight(int count)
 		LPtr = NextLinePtr(LPtr);
 	}
 
-	BuffUpdateRect(CursorLeftM-(CursorLeftM>0), CursorTop, CursorRightM+(CursorRightM<NumOfColumns-1), CursorBottom);
+	BuffUpdateRect(CursorLeftM-(CursorLeftM>0), CursorTop, CursorRightM+(CursorRightM<geom.NumOfColumns-1), CursorBottom);
 }
 
 // 現在行をまるごとバッファに格納する。返り値は現在のカーソル位置(X)。
@@ -5417,13 +5417,13 @@ int BuffGetCurrentLineData(char *buf, int bufsize)
 #if 0
 	LONG Ptr;
 
-	Ptr = GetLinePtr(PageStart + CursorY);
+	Ptr = GetLinePtr(geom.PageStart + geom.CursorY);
 	memset(buf, 0, bufsize);
-	memcpy(buf, &CodeBuff[Ptr], min(NumOfColumns, bufsize - 1));
-	return (CursorX);
+	memcpy(buf, &CodeBuff[Ptr], min(geom.NumOfColumns, bufsize - 1));
+	return (geom.CursorX);
 #endif
-	BuffGetAnyLineData(CursorY, buf, bufsize);
-	return CursorX;
+	BuffGetAnyLineData(geom.CursorY, buf, bufsize);
+	return geom.CursorX;
 }
 
 /**
@@ -5437,13 +5437,13 @@ int BuffGetCurrentLineData(char *buf, int bufsize)
 wchar_t *BuffGetLineStrW(int Sy, int *cx, size_t *lenght)
 {
 	size_t total_len = 0;
-	LONG Ptr = GetLinePtr(PageStart + Sy);
+	LONG Ptr = GetLinePtr(geom.PageStart + Sy);
 	buff_char_t* b = &CodeBuffW[Ptr];
 	int x;
 	int cx_pos = cx != NULL ? *cx : 0;
 	size_t idx;
 	wchar_t *result;
-	for(x = 0; x < NumOfColumns; x++) {
+	for(x = 0; x < geom.NumOfColumns; x++) {
 		size_t len;
 		if (x == cx_pos) {
 			if (cx != NULL) {
@@ -5456,7 +5456,7 @@ wchar_t *BuffGetLineStrW(int Sy, int *cx, size_t *lenght)
 	total_len++;
 	result = (wchar_t *)malloc(total_len * sizeof(wchar_t));
 	idx = 0;
-	for(x = 0; x < NumOfColumns; x++) {
+	for(x = 0; x < geom.NumOfColumns; x++) {
 		wchar_t *p = &result[idx];
 		size_t len = CellExpandWchar(b + x, p, total_len - idx, NULL);
 		idx += len;
@@ -5476,12 +5476,12 @@ int BuffGetAnyLineData(int offset_y, char *buf, int bufsize)
 	int i;
 	int idx;
 
-	if (offset_y >= BuffEnd)
+	if (offset_y >= geom.BuffEnd)
 		return -1;
 
 	Ptr = GetLinePtr(offset_y);
 	memset(buf, 0, bufsize);
-	copysize = min(NumOfColumns, bufsize - 1);
+	copysize = min(geom.NumOfColumns, bufsize - 1);
 	idx = 0;
 	for (i = 0; i<copysize; i++) {
 		unsigned short c;
@@ -5520,11 +5520,11 @@ int BuffGetAnyLineDataW(int offset_y, wchar_t *buf, size_t bufsize)
 	size_t left;
 	buff_char_t *b;
 
-	if (offset_y >= BuffEnd)
+	if (offset_y >= geom.BuffEnd)
 		return -1;
 
 	memset(buf, 0, bufsize * sizeof(wchar_t));
-	copysize = min((size_t)NumOfColumns, bufsize - 1);
+	copysize = min((size_t)geom.NumOfColumns, bufsize - 1);
 	Ptr = GetLinePtr(offset_y);
 	b = &CodeBuffW[Ptr];
 	idx = 0;
@@ -5557,16 +5557,16 @@ BOOL BuffCheckMouseOnURL(int Xw, int Yw)
 	BOOL Result, Right;
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &Y, &Right);
-	Y += PageStart;
+	Y += geom.PageStart;
 
 	if (X < 0)
 		X = 0;
-	else if (X > NumOfColumns)
-		X = NumOfColumns;
+	else if (X > geom.NumOfColumns)
+		X = geom.NumOfColumns;
 	if (Y < 0)
 		Y = 0;
-	else if (Y >= BuffEnd)
-		Y = BuffEnd - 1;
+	else if (Y >= geom.BuffEnd)
+		Y = geom.BuffEnd - 1;
 
 	TmpPtr = GetLinePtr(Y);
 	LockBuffer();
@@ -5614,16 +5614,16 @@ wchar_t *BuffGetCharInfo(int Xw, int Yw)
     wchar_t *unicode_utf32_str;
 
 	DispConvWinToScreen(vt_src, Xw, Yw, &X, &ScreenY, &Right);
-	Y = PageStart + ScreenY;
+	Y = geom.PageStart + ScreenY;
 
 	if (X < 0)
 		X = 0;
-	else if (X > NumOfColumns)
-		X = NumOfColumns;
+	else if (X > geom.NumOfColumns)
+		X = geom.NumOfColumns;
 	if (Y < 0)
 		Y = 0;
-	else if (Y >= BuffEnd)
-		Y = BuffEnd - 1;
+	else if (Y >= geom.BuffEnd)
+		Y = geom.BuffEnd - 1;
 
 	TmpPtr = GetLinePtr(Y);
 	b = &CodeBuffW[TmpPtr+X];
@@ -5800,7 +5800,7 @@ wchar_t *BuffGetCharInfo(int Xw, int Yw)
 
 void BuffSetCursorCharAttr(int x, int y, const TCharAttr *Attr)
 {
-	const LONG TmpPtr = GetLinePtr(PageStart+y);
+	const LONG TmpPtr = GetLinePtr(geom.PageStart+y);
 	CodeBuffW[TmpPtr + x].attr = Attr->Attr;
 	CodeBuffW[TmpPtr + x].attr2 = Attr->Attr2;
 	CodeBuffW[TmpPtr + x].fg = Attr->Fore;
@@ -5809,7 +5809,7 @@ void BuffSetCursorCharAttr(int x, int y, const TCharAttr *Attr)
 
 TCharAttr BuffGetCursorCharAttr(int x, int y)
 {
-	const LONG TmpPtr = GetLinePtr(PageStart+y);
+	const LONG TmpPtr = GetLinePtr(geom.PageStart+y);
 	TCharAttr Attr;
 	Attr.Attr = CodeBuffW[TmpPtr + x].attr;
 	Attr.Attr2 = CodeBuffW[TmpPtr + x].attr2;

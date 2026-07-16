@@ -105,22 +105,14 @@ typedef struct vtdraw {
 	const TTTSet *pts;
 } vtdraw_t;
 
-int WinWidth, WinHeight;		// 画面に表示されている文字数(セル数)
+TermGeometry geom;				// single owner: window/cursor/buffer geometry
 static BOOL Active = FALSE;
 static BOOL CompletelyVisible;
 BOOL AdjustSize;
 BOOL DontChangeSize=FALSE;
 static int CRTWidth, CRTHeight;
-int CursorX, CursorY;
 /* Virtual screen region */
 static RECT VirtualScreen;
-
-// --- scrolling status flags
-int WinOrgX, WinOrgY;			// 現在の表示位置
-int NewOrgX, NewOrgY;			// 更新後の表示位置
-
-int NumOfLines, NumOfColumns;	// バッファリングしている文字数
-int PageStart, BuffEnd;			// 表示しているバッファ内の位置
 
 static BOOL CursorOnDBCS = FALSE;
 static BOOL SaveWinSize = FALSE;
@@ -1588,8 +1580,8 @@ static void DispFontCreate(vtdraw_t *vt, ttdc_t *dc, LOGFONTW VTlf)
 	}
 	vt->CellWidth = vt->FontWidth + ts.FontDW;
 	vt->CellHeight = vt->FontHeight + ts.FontDH;
-	vt->ScreenWidth = WinWidth * vt->CellWidth;
-	vt->ScreenHeight = WinHeight * vt->CellHeight;
+	vt->ScreenWidth = geom.WinWidth * vt->CellWidth;
+	vt->ScreenHeight = geom.WinHeight * vt->CellHeight;
 
 	/* Underline */
 	if ((ts.FontFlag & FF_UNDERLINE) || (ts.FontFlag & FF_URLUNDERLINE)) {
@@ -1705,8 +1697,8 @@ void EndDisp(vtdraw_t *vt)
 void DispReset(vtdraw_t *vt)
 {
   /* Cursor */
-  CursorX = 0;
-  CursorY = 0;
+  geom.CursorX = 0;
+  geom.CursorY = 0;
 
   /* Scroll status */
   ScrollCount = 0;
@@ -1726,10 +1718,10 @@ void DispConvWinToScreen(vtdraw_t *vt, int Xw, int Yw, int *Xs, int *Ys, PBOOL R
 //			 a character cell.
 {
   if (Xs!=NULL)
-	*Xs = Xw / vt->CellWidth + WinOrgX;
-  *Ys = Yw / vt->CellHeight + WinOrgY;
+	*Xs = Xw / vt->CellWidth + geom.WinOrgX;
+  *Ys = Yw / vt->CellHeight + geom.WinOrgY;
   if ((Xs!=NULL) && (Right!=NULL))
-    *Right = (Xw - (*Xs-WinOrgX)*vt->CellWidth) >= vt->CellWidth/2;
+    *Right = (Xw - (*Xs-geom.WinOrgX)*vt->CellWidth) >= vt->CellWidth/2;
 }
 
 void DispConvScreenToWin(vtdraw_t *vt, int Xs, int Ys, int *Xw, int *Yw)
@@ -1740,9 +1732,9 @@ void DispConvScreenToWin(vtdraw_t *vt, int Xs, int Ys, int *Xw, int *Yw)
 //      Xw, Yw: window coordinate
 {
   if (Xw!=NULL)
-       *Xw = (Xs - WinOrgX) * vt->CellWidth;
+       *Xw = (Xs - geom.WinOrgX) * vt->CellWidth;
   if (Yw!=NULL)
-       *Yw = (Ys - WinOrgY) * vt->CellHeight;
+       *Yw = (Ys - geom.WinOrgY) * vt->CellHeight;
 }
 
 /**
@@ -1884,8 +1876,8 @@ void CaretKillFocus(vtdraw_t *vt, BOOL show)
   ttdc_t *dc = DispInitDC(vt);
   hdc = dc->VTDC;
 
-  CaretX = (CursorX - WinOrgX) * vt->CellWidth;
-  CaretY = (CursorY - WinOrgY) * vt->CellHeight;
+  CaretX = (geom.CursorX - geom.WinOrgX) * vt->CellWidth;
+  CaretY = (geom.CursorY - geom.WinOrgY) * vt->CellHeight;
 
   p[0].x = CaretX;
   p[0].y = CaretY;
@@ -1929,8 +1921,8 @@ void UpdateCaretPosition(vtdraw_t *vt, BOOL enforce)
   int CaretX, CaretY;
   RECT rc;
 
-  CaretX = (CursorX - WinOrgX) * vt->CellWidth;
-  CaretY = (CursorY - WinOrgY) * vt->CellHeight;
+  CaretX = (geom.CursorX - geom.WinOrgX) * vt->CellWidth;
+  CaretY = (geom.CursorY - geom.WinOrgY) * vt->CellHeight;
 
   if (!enforce && !ts.KillFocusCursor)
 	  return;
@@ -1982,8 +1974,8 @@ void CaretOn(vtdraw_t *vt)
 			}
 		}
 
-		CaretX = (CursorX - WinOrgX) * vt->CellWidth;
-		CaretY = (CursorY - WinOrgY) * vt->CellHeight;
+		CaretX = (geom.CursorX - geom.WinOrgX) * vt->CellWidth;
+		CaretY = (geom.CursorY - geom.WinOrgY) * vt->CellHeight;
 
 		if (IMEstat && IMECompositionState) {
 			// IME ON && 変換中の場合のみの処理する。
@@ -2086,20 +2078,20 @@ void DispChangeWinSize(vtdraw_t *vt, int Nx, int Ny)
 
   if (SaveWinSize)
   {
-    WinWidthOld = WinWidth;
-    WinHeightOld = WinHeight;
+    WinWidthOld = geom.WinWidth;
+    WinHeightOld = geom.WinHeight;
     SaveWinSize = FALSE;
   }
   else {
-    WinWidthOld = NumOfColumns;
-    WinHeightOld = NumOfLines;
+    WinWidthOld = geom.NumOfColumns;
+    WinHeightOld = geom.NumOfLines;
   }
 
-  WinWidth = Nx;
-  WinHeight = Ny;
+  geom.WinWidth = Nx;
+  geom.WinHeight = Ny;
 
-  vt->ScreenWidth = WinWidth * vt->CellWidth;
-  vt->ScreenHeight = WinHeight * vt->CellHeight;
+  vt->ScreenWidth = geom.WinWidth * vt->CellWidth;
+  vt->ScreenHeight = geom.WinHeight * vt->CellHeight;
 
   AdjustScrollBar(vt);
 
@@ -2198,10 +2190,10 @@ ttdc_t *PaintWindow(vtdraw_t *vt, HDC PaintDC, RECT PaintRect, BOOL fBkGnd,
 	dc->VTDC = hDC;
 	DispInitDC2(vt, dc);
 
-	*Xs = PaintRect.left / vt->CellWidth + WinOrgX;
-	*Ys = PaintRect.top / vt->CellHeight + WinOrgY;
-	*Xe = (PaintRect.right - 1) / vt->CellWidth + WinOrgX;
-	*Ye = (PaintRect.bottom - 1) / vt->CellHeight + WinOrgY;
+	*Xs = PaintRect.left / vt->CellWidth + geom.WinOrgX;
+	*Ys = PaintRect.top / vt->CellHeight + geom.WinOrgY;
+	*Xe = (PaintRect.right - 1) / vt->CellWidth + geom.WinOrgX;
+	*Ye = (PaintRect.bottom - 1) / vt->CellHeight + geom.WinOrgY;
 
 	return dc;
 }
@@ -2220,15 +2212,15 @@ void DispClearWin(vtdraw_t *vt)
 
   ScrollCount = 0;
   dScroll = 0;
-  if (WinHeight > NumOfLines)
-    DispChangeWinSize(vt, NumOfColumns,NumOfLines);
+  if (geom.WinHeight > geom.NumOfLines)
+    DispChangeWinSize(vt, geom.NumOfColumns,geom.NumOfLines);
   else {
-    if ((NumOfLines==WinHeight) && (ts.EnableScrollBuff>0))
+    if ((geom.NumOfLines==geom.WinHeight) && (ts.EnableScrollBuff>0))
     {
       SetScrollRange(vt->hVTWin,SB_VERT,0,1,FALSE);
     }
     else
-      SetScrollRange(vt->hVTWin,SB_VERT,0,NumOfLines-WinHeight,FALSE);
+      SetScrollRange(vt->hVTWin,SB_VERT,0,geom.NumOfLines-geom.WinHeight,FALSE);
 
     SetScrollPos(vt->hVTWin,SB_HORZ,0,TRUE);
     SetScrollPos(vt->hVTWin,SB_VERT,0,TRUE);
@@ -2949,12 +2941,12 @@ BOOL DispDeleteLines(vtdraw_t *vt, int Count, int YEnd)
   RECT R;
 
   if (Active && CompletelyVisible &&
-      (YEnd + 1 - WinOrgY <= WinHeight))
+      (YEnd + 1 - geom.WinOrgY <= geom.WinHeight))
   {
 	R.left = 0;
 	R.right = vt->ScreenWidth;
-	R.top = (CursorY - WinOrgY) * vt->CellHeight;
-	R.bottom = (YEnd + 1 - WinOrgY) * vt->CellHeight;
+	R.top = (geom.CursorY - geom.WinOrgY) * vt->CellHeight;
+	R.bottom = (YEnd + 1 - geom.WinOrgY) * vt->CellHeight;
 	//  ScrollWindow(vt->hVTWin,0,-CellHeight*Count,&R,&R);
 	BGScrollWindow(vt->hVTWin,0,-vt->CellHeight*Count,&R,&R);
 	UpdateWindow(vt->hVTWin);
@@ -2972,12 +2964,12 @@ BOOL DispInsertLines(vtdraw_t *vt, int Count, int YEnd)
   RECT R;
 
   if (Active && CompletelyVisible &&
-      (CursorY >= WinOrgY))
+      (geom.CursorY >= geom.WinOrgY))
   {
     R.left = 0;
     R.right = vt->ScreenWidth;
-	R.top = (CursorY - WinOrgY) * vt->CellHeight;
-	R.bottom = (YEnd + 1 - WinOrgY) * vt->CellHeight;
+	R.top = (geom.CursorY - geom.WinOrgY) * vt->CellHeight;
+	R.bottom = (YEnd + 1 - geom.WinOrgY) * vt->CellHeight;
 	//  ScrollWindow(vt->hVTWin,0,CellHeight*Count,&R,&R);
 	BGScrollWindow(vt->hVTWin, 0, vt->CellHeight * Count, &R, &R);
 	UpdateWindow(vt->hVTWin);
@@ -3007,13 +2999,13 @@ BOOL IsLineVisible(vtdraw_t *vt, int *X, int *Y)
       return FALSE;
   }
 
-  if ((*Y<WinOrgY) ||
-      (*Y>=WinOrgY+WinHeight))
+  if ((*Y<geom.WinOrgY) ||
+      (*Y>=geom.WinOrgY+geom.WinHeight))
     return FALSE;
 
   /* screen coordinate -> window coordinate */
-  *X = (*X - WinOrgX) * vt->CellWidth;
-  *Y = (*Y - WinOrgY) * vt->CellHeight;
+  *X = (*X - geom.WinOrgX) * vt->CellWidth;
+  *Y = (*Y - geom.WinOrgY) * vt->CellHeight;
   return TRUE;
 }
 
@@ -3024,13 +3016,13 @@ void AdjustScrollBar(vtdraw_t *vt) /* called by ChangeWindowSize() */
   LONG XRange, YRange;
   int ScrollPosX, ScrollPosY;
 
-  if (NumOfColumns-WinWidth>0)
-    XRange = NumOfColumns-WinWidth;
+  if (geom.NumOfColumns-geom.WinWidth>0)
+    XRange = geom.NumOfColumns-geom.WinWidth;
   else
     XRange = 0;
 
-  if (BuffEnd-WinHeight>0)
-    YRange = BuffEnd-WinHeight;
+  if (geom.BuffEnd-geom.WinHeight>0)
+    YRange = geom.BuffEnd-geom.WinHeight;
   else
     YRange = 0;
 
@@ -3041,10 +3033,10 @@ void AdjustScrollBar(vtdraw_t *vt) /* called by ChangeWindowSize() */
   if (ScrollPosY > YRange)
     ScrollPosY = YRange;
 
-  WinOrgX = ScrollPosX;
-  WinOrgY = ScrollPosY-PageStart;
-  NewOrgX = WinOrgX;
-  NewOrgY = WinOrgY;
+  geom.WinOrgX = ScrollPosX;
+  geom.WinOrgY = ScrollPosY-geom.PageStart;
+  geom.NewOrgX = geom.WinOrgX;
+  geom.NewOrgY = geom.WinOrgY;
 
   DontChangeSize = TRUE;
 
@@ -3067,15 +3059,15 @@ void AdjustScrollBar(vtdraw_t *vt) /* called by ChangeWindowSize() */
 void DispScrollToCursor(vtdraw_t *vt, int CurX, int CurY)
 {
   (void)vt;
-  if (CurX < NewOrgX)
-    NewOrgX = CurX;
-  else if (CurX >= NewOrgX+WinWidth)
-    NewOrgX = CurX + 1 - WinWidth;
+  if (CurX < geom.NewOrgX)
+    geom.NewOrgX = CurX;
+  else if (CurX >= geom.NewOrgX+geom.WinWidth)
+    geom.NewOrgX = CurX + 1 - geom.WinWidth;
 
-  if (CurY < NewOrgY)
-    NewOrgY = CurY;
-  else if (CurY >= NewOrgY+WinHeight)
-    NewOrgY = CurY + 1 - WinHeight;
+  if (CurY < geom.NewOrgY)
+    geom.NewOrgY = CurY;
+  else if (CurY >= geom.NewOrgY+geom.WinHeight)
+    geom.NewOrgY = CurY + 1 - geom.WinHeight;
 }
 
 void DispScrollNLines(vtdraw_t *vt, int Top, int Bottom, int Direction)
@@ -3117,55 +3109,55 @@ void DispUpdateScroll(vtdraw_t *vt)
     d = dScroll * vt->CellHeight;
     R.left = 0;
     R.right = vt->ScreenWidth;
-    R.top = (SRegionTop-WinOrgY)*vt->CellHeight;
-    R.bottom = (SRegionBottom+1-WinOrgY)*vt->CellHeight;
+    R.top = (SRegionTop-geom.WinOrgY)*vt->CellHeight;
+    R.bottom = (SRegionBottom+1-geom.WinOrgY)*vt->CellHeight;
 //  ScrollWindow(vt->hVTWin,0,-d,&R,&R);
     BGScrollWindow(vt->hVTWin,0,-d,&R,&R);
 
     if ((SRegionTop==0) && (dScroll>0))
-	{ // update scroll bar if BuffEnd is changed
-	  if ((BuffEnd==WinHeight) &&
+	{ // update scroll bar if geom.BuffEnd is changed
+	  if ((geom.BuffEnd==geom.WinHeight) &&
           (ts.EnableScrollBuff>0))
         SetScrollRange(vt->hVTWin,SB_VERT,0,1,TRUE);
       else
-        SetScrollRange(vt->hVTWin,SB_VERT,0,BuffEnd-WinHeight,FALSE);
-      SetScrollPos(vt->hVTWin,SB_VERT,WinOrgY+PageStart,TRUE);
+        SetScrollRange(vt->hVTWin,SB_VERT,0,geom.BuffEnd-geom.WinHeight,FALSE);
+      SetScrollPos(vt->hVTWin,SB_VERT,geom.WinOrgY+geom.PageStart,TRUE);
 	}
     dScroll = 0;
   }
 
   /* Update normal scroll */
-  if (NewOrgX < 0) NewOrgX = 0;
-  if (NewOrgX>NumOfColumns-WinWidth)
-    NewOrgX = NumOfColumns-WinWidth;
-  if (NewOrgY < -PageStart) NewOrgY = -PageStart;
-  if (NewOrgY>BuffEnd-WinHeight-PageStart)
-    NewOrgY = BuffEnd-WinHeight-PageStart;
+  if (geom.NewOrgX < 0) geom.NewOrgX = 0;
+  if (geom.NewOrgX>geom.NumOfColumns-geom.WinWidth)
+    geom.NewOrgX = geom.NumOfColumns-geom.WinWidth;
+  if (geom.NewOrgY < -geom.PageStart) geom.NewOrgY = -geom.PageStart;
+  if (geom.NewOrgY>geom.BuffEnd-geom.WinHeight-geom.PageStart)
+    geom.NewOrgY = geom.BuffEnd-geom.WinHeight-geom.PageStart;
 
   /* 最下行でだけ自動スクロールする設定の場合
      NewOrgYが変化していなくてもバッファ行数が変化するので更新する */
   if (ts.AutoScrollOnlyInBottomLine != 0)
   {
-    if ((BuffEnd==WinHeight) &&
+    if ((geom.BuffEnd==geom.WinHeight) &&
         (ts.EnableScrollBuff>0))
       SetScrollRange(vt->hVTWin,SB_VERT,0,1,TRUE);
     else
-      SetScrollRange(vt->hVTWin,SB_VERT,0,BuffEnd-WinHeight,FALSE);
-    SetScrollPos(vt->hVTWin,SB_VERT,NewOrgY+PageStart,TRUE);
+      SetScrollRange(vt->hVTWin,SB_VERT,0,geom.BuffEnd-geom.WinHeight,FALSE);
+    SetScrollPos(vt->hVTWin,SB_VERT,geom.NewOrgY+geom.PageStart,TRUE);
   }
 
-  if ((NewOrgX==WinOrgX) &&
-      (NewOrgY==WinOrgY)) return;
+  if ((geom.NewOrgX==geom.WinOrgX) &&
+      (geom.NewOrgY==geom.WinOrgY)) return;
 
-  if (NewOrgX==WinOrgX)
+  if (geom.NewOrgX==geom.WinOrgX)
   {
-	  d = (NewOrgY - WinOrgY) * vt->CellHeight;
+	  d = (geom.NewOrgY - geom.WinOrgY) * vt->CellHeight;
 	  //  ScrollWindow(vt->hVTWin,0,-d,NULL,NULL);
     BGScrollWindow(vt->hVTWin,0,-d,NULL,NULL);
   }
-  else if (NewOrgY==WinOrgY)
+  else if (geom.NewOrgY==geom.WinOrgY)
   {
-    d = (NewOrgX-WinOrgX) * vt->CellWidth;
+    d = (geom.NewOrgX-geom.WinOrgX) * vt->CellWidth;
 //  ScrollWindow(vt->hVTWin,-d,0,NULL,NULL);
     BGScrollWindow(vt->hVTWin,-d,0,NULL,NULL);
   }
@@ -3173,29 +3165,29 @@ void DispUpdateScroll(vtdraw_t *vt)
     InvalidateRect(vt->hVTWin,NULL,TRUE);
 
   /* Update scroll bars */
-  if (NewOrgX!=WinOrgX)
-    SetScrollPos(vt->hVTWin,SB_HORZ,NewOrgX,TRUE);
+  if (geom.NewOrgX!=geom.WinOrgX)
+    SetScrollPos(vt->hVTWin,SB_HORZ,geom.NewOrgX,TRUE);
 
-  if (ts.AutoScrollOnlyInBottomLine == 0 && NewOrgY!=WinOrgY)
+  if (ts.AutoScrollOnlyInBottomLine == 0 && geom.NewOrgY!=geom.WinOrgY)
   {
-    if ((BuffEnd==WinHeight) &&
+    if ((geom.BuffEnd==geom.WinHeight) &&
         (ts.EnableScrollBuff>0))
       SetScrollRange(vt->hVTWin,SB_VERT,0,1,TRUE);
     else
-      SetScrollRange(vt->hVTWin,SB_VERT,0,BuffEnd-WinHeight,FALSE);
-    SetScrollPos(vt->hVTWin,SB_VERT,NewOrgY+PageStart,TRUE);
+      SetScrollRange(vt->hVTWin,SB_VERT,0,geom.BuffEnd-geom.WinHeight,FALSE);
+    SetScrollPos(vt->hVTWin,SB_VERT,geom.NewOrgY+geom.PageStart,TRUE);
   }
 
-  WinOrgX = NewOrgX;
-  WinOrgY = NewOrgY;
+  geom.WinOrgX = geom.NewOrgX;
+  geom.WinOrgY = geom.NewOrgY;
 
   if (IsCaretOn()) CaretOn(vt);
 }
 
 void DispScrollHomePos(vtdraw_t *vt)
 {
-  NewOrgX = 0;
-  NewOrgY = 0;
+  geom.NewOrgX = 0;
+  geom.NewOrgY = 0;
   DispUpdateScroll(vt);
 }
 
@@ -3206,13 +3198,13 @@ void DispAutoScroll(vtdraw_t *vt, POINT p)
   X = (p.x + vt->CellWidth / 2) / vt->CellWidth;
   Y = p.y / vt->CellHeight;
   if (X<0)
-    NewOrgX = WinOrgX + X;
-  else if (X>=WinWidth)
-    NewOrgX = NewOrgX + X - WinWidth + 1;
+    geom.NewOrgX = geom.WinOrgX + X;
+  else if (X>=geom.WinWidth)
+    geom.NewOrgX = geom.NewOrgX + X - geom.WinWidth + 1;
   if (Y<0)
-    NewOrgY = WinOrgY + Y;
-  else if (Y>=WinHeight)
-    NewOrgY = NewOrgY + Y - WinHeight + 1;
+    geom.NewOrgY = geom.WinOrgY + Y;
+  else if (Y>=geom.WinHeight)
+    geom.NewOrgY = geom.NewOrgY + Y - geom.WinHeight + 1;
 
   DispUpdateScroll(vt);
 }
@@ -3221,18 +3213,18 @@ void DispHScroll(vtdraw_t *vt, int Func, int Pos)
 {
   switch (Func) {
 	case SCROLL_BOTTOM:
-      NewOrgX = NumOfColumns-WinWidth;
+      geom.NewOrgX = geom.NumOfColumns-geom.WinWidth;
       break;
-	case SCROLL_LINEDOWN: NewOrgX = WinOrgX + 1; break;
-	case SCROLL_LINEUP: NewOrgX = WinOrgX - 1; break;
+	case SCROLL_LINEDOWN: geom.NewOrgX = geom.WinOrgX + 1; break;
+	case SCROLL_LINEUP: geom.NewOrgX = geom.WinOrgX - 1; break;
 	case SCROLL_PAGEDOWN:
-      NewOrgX = WinOrgX + WinWidth - 1;
+      geom.NewOrgX = geom.WinOrgX + geom.WinWidth - 1;
       break;
 	case SCROLL_PAGEUP:
-      NewOrgX = WinOrgX - WinWidth + 1;
+      geom.NewOrgX = geom.WinOrgX - geom.WinWidth + 1;
       break;
-	case SCROLL_POS: NewOrgX = Pos; break;
-	case SCROLL_TOP: NewOrgX = 0; break;
+	case SCROLL_POS: geom.NewOrgX = Pos; break;
+	case SCROLL_TOP: geom.NewOrgX = 0; break;
   }
   DispUpdateScroll(vt);
 }
@@ -3241,18 +3233,18 @@ void DispVScroll(vtdraw_t *vt, int Func, int Pos)
 {
   switch (Func) {
 	case SCROLL_BOTTOM:
-      NewOrgY = BuffEnd-WinHeight-PageStart;
+      geom.NewOrgY = geom.BuffEnd-geom.WinHeight-geom.PageStart;
       break;
-	case SCROLL_LINEDOWN: NewOrgY = WinOrgY + 1; break;
-	case SCROLL_LINEUP: NewOrgY = WinOrgY - 1; break;
+	case SCROLL_LINEDOWN: geom.NewOrgY = geom.WinOrgY + 1; break;
+	case SCROLL_LINEUP: geom.NewOrgY = geom.WinOrgY - 1; break;
 	case SCROLL_PAGEDOWN:
-      NewOrgY = WinOrgY + WinHeight - 1;
+      geom.NewOrgY = geom.WinOrgY + geom.WinHeight - 1;
       break;
 	case SCROLL_PAGEUP:
-      NewOrgY = WinOrgY - WinHeight + 1;
+      geom.NewOrgY = geom.WinOrgY - geom.WinHeight + 1;
       break;
-	case SCROLL_POS: NewOrgY = Pos-PageStart; break;
-	case SCROLL_TOP: NewOrgY = -PageStart; break;
+	case SCROLL_POS: geom.NewOrgY = Pos-geom.PageStart; break;
+	case SCROLL_TOP: geom.NewOrgY = -geom.PageStart; break;
   }
   DispUpdateScroll(vt);
 }
@@ -3267,17 +3259,17 @@ void DispRestoreWinSize(vtdraw_t *vt)
 {
   if (ts.TermIsWin>0) return;
 
-  if ((WinWidth==NumOfColumns) && (WinHeight==NumOfLines))
+  if ((geom.WinWidth==geom.NumOfColumns) && (geom.WinHeight==geom.NumOfLines))
   {
-    if (WinWidthOld > NumOfColumns)
-      WinWidthOld = NumOfColumns;
-    if (WinHeightOld > BuffEnd)
-      WinHeightOld = BuffEnd;
+    if (WinWidthOld > geom.NumOfColumns)
+      WinWidthOld = geom.NumOfColumns;
+    if (WinHeightOld > geom.BuffEnd)
+      WinHeightOld = geom.BuffEnd;
 	DispChangeWinSize(vt, WinWidthOld, WinHeightOld);
   }
   else {
     SaveWinSize = TRUE;
-    DispChangeWinSize(vt, NumOfColumns,NumOfLines);
+    DispChangeWinSize(vt, geom.NumOfColumns,geom.NumOfLines);
   }
 }
 
@@ -3291,8 +3283,8 @@ void DispSetWinPos(vtdraw_t *vt)
 
 	if (CanUseIME() && (ts.IMEInline > 0))
 	{
-		CaretX = (CursorX-WinOrgX)*vt->CellWidth;
-		CaretY = (CursorY-WinOrgY)*vt->CellHeight;
+		CaretX = (geom.CursorX-geom.WinOrgX)*vt->CellWidth;
+		CaretY = (geom.CursorY-geom.WinOrgY)*vt->CellHeight;
 		/* set IME conversion window pos. */
 		SetConversionWindow(vt->hVTWin,CaretX,CaretY);
 	}
