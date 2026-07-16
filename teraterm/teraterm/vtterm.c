@@ -210,8 +210,8 @@ static void ClearParams(void)
 
 static void SaveCursorBuf(PStatusBuff Buff)
 {
-	Buff->CursorX = CursorX;
-	Buff->CursorY = CursorY;
+	Buff->CursorX = geom.CursorX;
+	Buff->CursorY = geom.CursorY;
 	Buff->Attr = CharAttr;
 
 	CharSetSaveState(charset_data, &Buff->CharSetState);
@@ -246,10 +246,10 @@ static void RestoreCursor()
 	else
 		Buff = &SBuff1; // for main screen
 
-	if (Buff->CursorX > NumOfColumns-1)
-		Buff->CursorX = NumOfColumns-1;
-	if (Buff->CursorY > NumOfLines-1-StatusLine)
-		Buff->CursorY = NumOfLines-1-StatusLine;
+	if (Buff->CursorX > geom.NumOfColumns-1)
+		Buff->CursorX = geom.NumOfColumns-1;
+	if (Buff->CursorY > geom.NumOfLines-1-StatusLine)
+		Buff->CursorY = geom.NumOfLines-1-StatusLine;
 	MoveCursor(Buff->CursorX, Buff->CursorY);
 
 	CharAttr = Buff->Attr;
@@ -377,7 +377,7 @@ void ResetKeypadMode(BOOL DisabledModeOnly)
 
 static void MoveToMainScreen(void)
 {
-	StatusX = CursorX;
+	StatusX = geom.CursorX;
 	StatusWrap = Wrap;
 	StatusCursor = IsCaretEnabled();
 
@@ -505,16 +505,16 @@ static BOOL NeedsOutputBufs(void)
 
 static void MoveToStatusLine()
 {
-	MainX = CursorX;
-	MainY = CursorY;
+	MainX = geom.CursorX;
+	MainY = geom.CursorY;
 	MainTop = CursorTop;
 	MainBottom = CursorBottom;
 	MainWrap = Wrap;
 	MainCursor = IsCaretEnabled();
 
 	DispEnableCaret(vt_src, StatusCursor);
-	MoveCursor(StatusX, NumOfLines-1); // move to status line
-	CursorTop = NumOfLines-1;
+	MoveCursor(StatusX, geom.NumOfLines-1); // move to status line
+	CursorTop = geom.NumOfLines-1;
 	CursorBottom = CursorTop;
 	Wrap = StatusWrap;
 }
@@ -536,7 +536,7 @@ void ChangeTerminalSize(int Nx, int Ny)
 	MainX = 0;
 	MainY = 0;
 	MainTop = 0;
-	MainBottom = NumOfLines-StatusLine-1;
+	MainBottom = geom.NumOfLines-StatusLine-1;
 }
 
 static void SendCSIstr(char *str, int len)
@@ -649,14 +649,14 @@ static void SendDCSstr(char *str, int len)
 
 static void BackSpace(void)
 {
-	if (CursorX == CursorLeftM || CursorX == 0) {
-		if (CursorY > 0 && (ts.TermFlag & TF_BACKWRAP)) {
-			MoveCursor(CursorRightM, CursorY-1);
+	if (geom.CursorX == CursorLeftM || geom.CursorX == 0) {
+		if (geom.CursorY > 0 && (ts.TermFlag & TF_BACKWRAP)) {
+			MoveCursor(CursorRightM, geom.CursorY-1);
 			if (NeedsOutputBufs() && !ts.LogTypePlainText) OutputLogByte(BS);
 		}
 	}
-	else if (CursorX > 0) {
-		MoveCursor(CursorX-1, CursorY);
+	else if (geom.CursorX > 0) {
+		MoveCursor(geom.CursorX-1, geom.CursorY);
 		if (NeedsOutputBufs() && !ts.LogTypePlainText) OutputLogByte(BS);
 	}
 }
@@ -666,10 +666,10 @@ static void CarriageReturn(BOOL logFlag)
 	if (!ts.EnableContinuedLineCopy || logFlag)
 		if (NeedsOutputBufs()) OutputLogByte(CR);
 
-	if (RelativeOrgMode || CursorX > CursorLeftM)
-		MoveCursor(CursorLeftM, CursorY);
-	else if (CursorX < CursorLeftM)
-		MoveCursor(0, CursorY);
+	if (RelativeOrgMode || geom.CursorX > CursorLeftM)
+		MoveCursor(CursorLeftM, geom.CursorY);
+	else if (geom.CursorX < CursorLeftM)
+		MoveCursor(0, geom.CursorY);
 
 	CharSetFallbackFinish(charset_data);
 }
@@ -684,11 +684,11 @@ static void LineFeed(BYTE b, BOOL logFlag)
 	if (!ts.EnableContinuedLineCopy || logFlag)
 		if (NeedsOutputBufs()) OutputLogByte(LF);
 
-	if (CursorY < CursorBottom)
-		MoveCursor(CursorX,CursorY+1);
-	else if (CursorY == CursorBottom) BuffScrollNLines(1);
-	else if (CursorY < NumOfLines-StatusLine-1)
-		MoveCursor(CursorX,CursorY+1);
+	if (geom.CursorY < CursorBottom)
+		MoveCursor(geom.CursorX,geom.CursorY+1);
+	else if (geom.CursorY == CursorBottom) BuffScrollNLines(1);
+	else if (geom.CursorY < geom.NumOfLines-StatusLine-1)
+		MoveCursor(geom.CursorX,geom.CursorY+1);
 
 	ClearLineContinued();
 
@@ -834,22 +834,22 @@ static void PutU32NoLog(unsigned int code)
 		CharAttrTmp.Attr |= CharAttr.Attr;
 	}
 
-	if (CursorX > CursorRightM)
-		LineEnd = NumOfColumns - 1;
+	if (geom.CursorX > CursorRightM)
+		LineEnd = geom.NumOfColumns - 1;
 	else
 		LineEnd = CursorRightM;
 
 	// Wrap処理、カーソル移動
 	if (Wrap) {
 		// 現在 Wrap 状態
-		if (!BuffIsCombiningCharacter(CursorX, CursorY, code)) {
+		if (!BuffIsCombiningCharacter(geom.CursorX, geom.CursorY, code)) {
 			// 文字コードが結合文字ではない = カーソルが移動する
 
 			// カーソル位置に行継続アトリビュートを追加
-			TCharAttr t = BuffGetCursorCharAttr(CursorX, CursorY);
+			TCharAttr t = BuffGetCursorCharAttr(geom.CursorX, geom.CursorY);
 			t.Attr |= AttrLineContinued;
 			t.AttrEx = t.Attr;
-			BuffSetCursorCharAttr(CursorX, CursorY, &t);
+			BuffSetCursorCharAttr(geom.CursorX, geom.CursorY, &t);
 
 			// 行継続アトリビュートをつける
 			CharAttrTmp.Attr |= AttrLineContinued;
@@ -878,7 +878,7 @@ retry:
 			CharAttrTmp.AttrEx = CharAttrTmp.Attr | AttrPadding;
 			// AutoWrapMode
 			// ts.EnableContinuedLineCopy
-			//if (CursorX != LineEnd){
+			//if (geom.CursorX != LineEnd){
 			//&& BuffIsHalfWidthFromCode(&ts, code)) {
 
 			// full width出力が半分出力にならないように0x20を出力
@@ -891,7 +891,7 @@ retry:
 		}
 		else {
 			// 行頭に戻す
-			CursorX = 0;
+			geom.CursorX = 0;
 		}
 
 		//CharAttrTmp.Attr &= ~AttrLineContinued;
@@ -903,7 +903,7 @@ retry:
 		UpdateStr();	// 「ほ」->「ぽ」など、変化することがあるので描画する
 	} else if (r == 1) {
 		// 半角(1セル)
-		if (CursorX + 0 == CursorRightM || CursorX >= NumOfColumns - 1) {
+		if (geom.CursorX + 0 == CursorRightM || geom.CursorX >= geom.NumOfColumns - 1) {
 			UpdateStr();
 			Wrap = AutoWrapMode;
 		} else {
@@ -912,7 +912,7 @@ retry:
 		}
 	} else if (r == 2) {
 		// 全角(2セル)
-		if (CursorX + 1 == CursorRightM || CursorX + 1 >= NumOfColumns - 1) {
+		if (geom.CursorX + 1 == CursorRightM || geom.CursorX + 1 >= geom.NumOfColumns - 1) {
 			MoveRight();	// 全角の右側にカーソル移動
 			UpdateStr();
 			Wrap = AutoWrapMode;
@@ -1306,9 +1306,9 @@ static void ESCSharp(BYTE b)
 		BuffUpdateScroll();
 		BuffFillWithE();
 		CursorTop = 0;
-		CursorBottom = NumOfLines-1-StatusLine;
+		CursorBottom = geom.NumOfLines-1-StatusLine;
 		CursorLeftM = 0;
-		CursorRightM = NumOfColumns - 1;
+		CursorRightM = geom.NumOfColumns - 1;
 		MoveCursor(0, 0);
 		ParseMode = ModeFirst;
 		break;
@@ -1481,23 +1481,23 @@ static void ParseEscape(BYTE b) /* b is the final char */
 	case 0: /* no intermediate char */
 		switch (b) {
 		case '6': // DECBI
-			if (CursorY >= CursorTop && CursorY <= CursorBottom &&
-			    CursorX >= CursorLeftM && CursorX <= CursorRightM) {
-				if (CursorX == CursorLeftM)
+			if (geom.CursorY >= CursorTop && geom.CursorY <= CursorBottom &&
+			    geom.CursorX >= CursorLeftM && geom.CursorX <= CursorRightM) {
+				if (geom.CursorX == CursorLeftM)
 					BuffScrollRight(1);
 				else
-					MoveCursor(CursorX-1, CursorY);
+					MoveCursor(geom.CursorX-1, geom.CursorY);
 			}
 		break;
 		case '7': SaveCursor(); break;
 		case '8': RestoreCursor(); break;
 		case '9': // DECFI
-			if (CursorY >= CursorTop && CursorY <= CursorBottom &&
-			    CursorX >= CursorLeftM && CursorX <= CursorRightM) {
-				if (CursorX == CursorRightM)
+			if (geom.CursorY >= CursorTop && geom.CursorY <= CursorBottom &&
+			    geom.CursorX >= CursorLeftM && geom.CursorX <= CursorRightM) {
+				if (geom.CursorX == CursorRightM)
 					BuffScrollLeft(1);
 				else
-					MoveCursor(CursorX+1, CursorY);
+					MoveCursor(geom.CursorX+1, geom.CursorY);
 			}
 			break;
 		case '=': AppliKeyMode = TRUE; break;
@@ -1506,7 +1506,7 @@ static void ParseEscape(BYTE b) /* b is the final char */
 			LineFeed(0,TRUE);
 			break;
 		case 'E': /* NEL */
-			MoveCursor(0,CursorY);
+			MoveCursor(0,geom.CursorY);
 			LineFeed(0,TRUE);
 			break;
 		case 'H': /* HTS */
@@ -1660,7 +1660,7 @@ static void EscapeSequence(BYTE b)
 static void CSInsertCharacter(void)
 {
 	// Insert space characters at cursor
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
 	BuffUpdateScroll();
 	BuffInsertSpace(P.Param[1]);
@@ -1670,23 +1670,23 @@ static void CSCursorUp(BOOL AffectMargin)	// CUU / VPB
 {
 	int topMargin, NewY;
 
-	CheckParamVal(P.Param[1], CursorY);
+	CheckParamVal(P.Param[1], geom.CursorY);
 
-	if (AffectMargin && CursorY >= CursorTop)
+	if (AffectMargin && geom.CursorY >= CursorTop)
 		topMargin = CursorTop;
 	else
 		topMargin = 0;
 
-	NewY = CursorY - P.Param[1];
+	NewY = geom.CursorY - P.Param[1];
 	if (NewY < topMargin)
 		NewY = topMargin;
 
-	MoveCursor(CursorX, NewY);
+	MoveCursor(geom.CursorX, NewY);
 }
 
 static void CSCursorUp1()			// CPL
 {
-	MoveCursor(CursorLeftM, CursorY);
+	MoveCursor(CursorLeftM, geom.CursorY);
 	CSCursorUp(TRUE);
 }
 
@@ -1694,23 +1694,23 @@ static void CSCursorDown(BOOL AffectMargin)	// CUD / VPR
 {
 	int bottomMargin, NewY;
 
-	if (AffectMargin && CursorY <= CursorBottom)
+	if (AffectMargin && geom.CursorY <= CursorBottom)
 		bottomMargin = CursorBottom;
 	else
-		bottomMargin = NumOfLines-StatusLine-1;
+		bottomMargin = geom.NumOfLines-StatusLine-1;
 
 	CheckParamVal(P.Param[1], bottomMargin);
 
-	NewY = CursorY + P.Param[1];
+	NewY = geom.CursorY + P.Param[1];
 	if (NewY > bottomMargin)
 		NewY = bottomMargin;
 
-	MoveCursor(CursorX, NewY);
+	MoveCursor(geom.CursorX, NewY);
 }
 
 static void CSCursorDown1()			// CNL
 {
-	MoveCursor(CursorLeftM, CursorY);
+	MoveCursor(CursorLeftM, geom.CursorY);
 	CSCursorDown(TRUE);
 }
 
@@ -1724,7 +1724,7 @@ static void CSScreenErase()
 		// させるようにする。(2005.5.29 yutaka)
 		// コンフィグレーションで切り替えられるようにした。(2008.5.3 yutaka)
 		if (ts.ScrollWindowClearScreen &&
-			(CursorX == 0 && CursorY == 0)) {
+			(geom.CursorX == 0 && geom.CursorY == 0)) {
 			// Erase screen (scroll out)
 			BuffClearScreen();
 			UpdateWindow(HVTWin);
@@ -1794,20 +1794,20 @@ static void CSInsertLine()
 	// Insert lines at current position
 	int Count, YEnd;
 
-	if (CursorY < CursorTop || CursorY > CursorBottom) {
+	if (geom.CursorY < CursorTop || geom.CursorY > CursorBottom) {
 		return;
 	}
 
-	CheckParamVal(P.Param[1], NumOfLines);
+	CheckParamVal(P.Param[1], geom.NumOfLines);
 
 	Count = P.Param[1];
 
 	YEnd = CursorBottom;
-	if (CursorY > YEnd)
-		YEnd = NumOfLines-1-StatusLine;
+	if (geom.CursorY > YEnd)
+		YEnd = geom.NumOfLines-1-StatusLine;
 
-	if (Count > YEnd+1 - CursorY)
-		Count = YEnd+1 - CursorY;
+	if (Count > YEnd+1 - geom.CursorY)
+		Count = YEnd+1 - geom.CursorY;
 
 	BuffInsertLines(Count,YEnd);
 }
@@ -1817,15 +1817,15 @@ static void CSLineErase()
 	BuffUpdateScroll();
 	switch (P.Param[1]) {
 	  case 0: /* erase char from cursor to end of line */
-		BuffEraseCharsInLine(CursorX,NumOfColumns-CursorX);
+		BuffEraseCharsInLine(geom.CursorX,geom.NumOfColumns-geom.CursorX);
 		break;
 
 	  case 1: /* erase char from start of line to cursor */
-		BuffEraseCharsInLine(0,CursorX+1);
+		BuffEraseCharsInLine(0,geom.CursorX+1);
 		break;
 
 	  case 2: /* erase entire line */
-		BuffEraseCharsInLine(0,NumOfColumns);
+		BuffEraseCharsInLine(0,geom.NumOfColumns);
 		break;
 	}
 }
@@ -1835,15 +1835,15 @@ static void CSQSelLineErase(void)
 	BuffUpdateScroll();
 	switch (P.Param[1]) {
 	  case 0: /* erase char from cursor to end of line */
-		BuffSelectedEraseCharsInLine(CursorX,NumOfColumns-CursorX);
+		BuffSelectedEraseCharsInLine(geom.CursorX,geom.NumOfColumns-geom.CursorX);
 		break;
 
 	  case 1: /* erase char from start of line to cursor */
-		BuffSelectedEraseCharsInLine(0,CursorX+1);
+		BuffSelectedEraseCharsInLine(0,geom.CursorX+1);
 		break;
 
 	  case 2: /* erase entire line */
-		BuffSelectedEraseCharsInLine(0,NumOfColumns);
+		BuffSelectedEraseCharsInLine(0,geom.NumOfColumns);
 		break;
 	}
 }
@@ -1853,19 +1853,19 @@ static void CSDeleteNLines()
 {
 	int Count, YEnd;
 
-	if (CursorY < CursorTop || CursorY > CursorBottom) {
+	if (geom.CursorY < CursorTop || geom.CursorY > CursorBottom) {
 		return;
 	}
 
-	CheckParamVal(P.Param[1], NumOfLines);
+	CheckParamVal(P.Param[1], geom.NumOfLines);
 	Count = P.Param[1];
 
 	YEnd = CursorBottom;
-	if (CursorY > YEnd)
-		YEnd = NumOfLines-1-StatusLine;
+	if (geom.CursorY > YEnd)
+		YEnd = geom.NumOfLines-1-StatusLine;
 
-	if (Count > YEnd+1-CursorY)
-		Count = YEnd+1-CursorY;
+	if (Count > YEnd+1-geom.CursorY)
+		Count = YEnd+1-geom.CursorY;
 
 	BuffDeleteLines(Count,YEnd);
 }
@@ -1874,7 +1874,7 @@ static void CSDeleteNLines()
 static void CSDeleteCharacter(void)
 {
 // Delete characters in current line from cursor
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
 	BuffUpdateScroll();
 	BuffDeleteChars(P.Param[1]);
@@ -1883,7 +1883,7 @@ static void CSDeleteCharacter(void)
 // ECH
 static void CSEraseCharacter(void)
 {
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
 	BuffUpdateScroll();
 	BuffEraseChars(P.Param[1]);
@@ -1891,7 +1891,7 @@ static void CSEraseCharacter(void)
 
 static void CSRepeatCharacter()
 {
-	CheckParamVal(P.Param[1], NumOfColumns * NumOfLines);
+	CheckParamVal(P.Param[1], geom.NumOfColumns * geom.NumOfLines);
 
 	BuffUpdateScroll();
 	RepeatChar(LastPutCharacter, P.Param[1]);
@@ -1909,7 +1909,7 @@ static void CSScrollUp()
 
 static void CSScrollDown()
 {
-	CheckParamVal(P.Param[1], NumOfLines);
+	CheckParamVal(P.Param[1], geom.NumOfLines);
 
 	BuffUpdateScroll();
 	BuffRegionScrollDownNLines(P.Param[1]);
@@ -1917,30 +1917,30 @@ static void CSScrollDown()
 
 static void CSForwardTab()
 {
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 	CursorForwardTab(P.Param[1], AutoWrapMode);
 }
 
 static void CSBackwardTab()
 {
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 	CursorBackwardTab(P.Param[1]);
 }
 
 static void CSMoveToColumnN()		// CHA / HPA
 {
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
 	P.Param[1]--;
 
 	if (RelativeOrgMode) {
 		if (CursorLeftM + P.Param[1] > CursorRightM )
-			MoveCursor(CursorRightM, CursorY);
+			MoveCursor(CursorRightM, geom.CursorY);
 		else
-			MoveCursor(CursorLeftM + P.Param[1], CursorY);
+			MoveCursor(CursorLeftM + P.Param[1], geom.CursorY);
 	}
 	else {
-		MoveCursor(P.Param[1], CursorY);
+		MoveCursor(P.Param[1], geom.CursorY);
 	}
 }
 
@@ -1948,58 +1948,58 @@ static void CSCursorRight(BOOL AffectMargin)	// CUF / HPR
 {
 	int NewX, rightMargin;
 
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
-	if (AffectMargin && CursorX <= CursorRightM) {
+	if (AffectMargin && geom.CursorX <= CursorRightM) {
 		rightMargin = CursorRightM;
 	}
 	else {
-		rightMargin = NumOfColumns-1;
+		rightMargin = geom.NumOfColumns-1;
 	}
 
-	NewX = CursorX + P.Param[1];
+	NewX = geom.CursorX + P.Param[1];
 	if (NewX > rightMargin)
 		NewX = rightMargin;
 
-	MoveCursor(NewX, CursorY);
+	MoveCursor(NewX, geom.CursorY);
 }
 
 static void CSCursorLeft(BOOL AffectMargin)	// CUB / HPB
 {
 	int NewX, leftMargin;
 
-	CheckParamVal(P.Param[1], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
 
-	if (AffectMargin && CursorX >= CursorLeftM) {
+	if (AffectMargin && geom.CursorX >= CursorLeftM) {
 		leftMargin = CursorLeftM;
 	}
 	else {
 		leftMargin = 0;
 	}
 
-	NewX = CursorX  - P.Param[1];
+	NewX = geom.CursorX  - P.Param[1];
 	if (NewX < leftMargin) {
 		NewX = leftMargin;
 	}
 
-	MoveCursor(NewX, CursorY);
+	MoveCursor(NewX, geom.CursorY);
 }
 
 static void CSMoveToLineN()		// VPA
 {
-	CheckParamVal(P.Param[1], NumOfLines-StatusLine);
+	CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);
 
 	if (RelativeOrgMode) {
 		if (CursorTop+P.Param[1]-1 > CursorBottom)
-			MoveCursor(CursorX,CursorBottom);
+			MoveCursor(geom.CursorX,CursorBottom);
 		else
-			MoveCursor(CursorX,CursorTop+P.Param[1]-1);
+			MoveCursor(geom.CursorX,CursorTop+P.Param[1]-1);
 	}
 	else {
-		if (P.Param[1] > NumOfLines-StatusLine)
-			MoveCursor(CursorX,NumOfLines-1-StatusLine);
+		if (P.Param[1] > geom.NumOfLines-StatusLine)
+			MoveCursor(geom.CursorX,geom.NumOfLines-1-StatusLine);
 		else
-			MoveCursor(CursorX,P.Param[1]-1);
+			MoveCursor(geom.CursorX,P.Param[1]-1);
 	}
 	CharSetFallbackFinish(charset_data);
 }
@@ -2009,14 +2009,14 @@ static void CSMoveToXY()		// CUP / HVP
 	int NewX, NewY;
 
 	RequiredParams(2);
-	CheckParamVal(P.Param[1], NumOfLines-StatusLine);
-	CheckParamVal(P.Param[2], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);
+	CheckParamVal(P.Param[2], geom.NumOfColumns);
 
 	NewY = P.Param[1] - 1;
 	NewX = P.Param[2] - 1;
 
 	if (isCursorOnStatusLine)
-		NewY = CursorY;
+		NewY = geom.CursorY;
 	else if (RelativeOrgMode) {
 		NewX += CursorLeftM;
 		if (NewX > CursorRightM)
@@ -2027,8 +2027,8 @@ static void CSMoveToXY()		// CUP / HVP
 			NewY = CursorBottom;
 	}
 	else {
-		if (NewY > NumOfLines-1-StatusLine)
-			NewY = NumOfLines-1-StatusLine;
+		if (NewY > geom.NumOfLines-1-StatusLine)
+			NewY = geom.NumOfLines-1-StatusLine;
 	}
 
 	MoveCursor(NewX, NewY);
@@ -2142,16 +2142,16 @@ static void CS_n_Mode()		// DSR
 	  case 6:
 		/* Cursor Position Report */
 		if (isCursorOnStatusLine) {
-			X = CursorX + 1;
+			X = geom.CursorX + 1;
 			Y = 1;
 		}
 		else if (RelativeOrgMode) {
-			X = CursorX - CursorLeftM + 1;
-			Y = CursorY - CursorTop + 1;
+			X = geom.CursorX - CursorLeftM + 1;
+			Y = geom.CursorY - CursorTop + 1;
 		}
 		else {
-			X = CursorX + 1;
-			Y = CursorY+1;
+			X = geom.CursorX + 1;
+			Y = geom.CursorY+1;
 		}
 		len = _snprintf_s_l(Report, sizeof(Report), _TRUNCATE, "%u;%uR", CLocale, Y, X);
 		SendCSIstr(Report, len);
@@ -2450,13 +2450,13 @@ static void CSSetAttr(void)		// SGR
 static void CSSetScrollRegion()	// DECSTBM
 {
 	if (isCursorOnStatusLine) {
-		MoveCursor(0,CursorY);
+		MoveCursor(0,geom.CursorY);
 		return;
 	}
 
 	RequiredParams(2);
-	CheckParamVal(P.Param[1], NumOfLines-StatusLine);
-	CheckParamValMax(P.Param[2], NumOfLines-StatusLine);
+	CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);
+	CheckParamValMax(P.Param[2], geom.NumOfLines-StatusLine);
 
 	if (P.Param[1] >= P.Param[2])
 		return;
@@ -2475,13 +2475,13 @@ static void CSSetLRScrollRegion()	// DECSLRM
 {
 //	TODO: ステータスライン上での挙動確認。
 //	if (isCursorOnStatusLine) {
-//		MoveCursor(0,CursorY);
+//		MoveCursor(0,geom.CursorY);
 //		return;
 //	}
 
 	RequiredParams(2);
-	CheckParamVal(P.Param[1], NumOfColumns);
-	CheckParamValMax(P.Param[2], NumOfColumns);
+	CheckParamVal(P.Param[1], geom.NumOfColumns);
+	CheckParamValMax(P.Param[2], geom.NumOfColumns);
 
 	if (P.Param[1] >= P.Param[2])
 		return;
@@ -2650,7 +2650,7 @@ static void CSSunSequence() /* Sun terminal private sequences */
 	  case 18: /* get terminal size */
 		if (ts.WindowFlag & WF_WINDOWREPORT) {
 			len = _snprintf_s_l(Report, sizeof(Report), _TRUNCATE, "8;%u;%ut", CLocale,
-			                    NumOfLines-StatusLine, NumOfColumns);
+			                    geom.NumOfLines-StatusLine, geom.NumOfColumns);
 			SendCSIstr(Report, len);
 		}
 		break;
@@ -2827,10 +2827,10 @@ static void CSGT(BYTE b)
 	  case 'J': // IO-8256 terminal
 		if (P.Param[1]==3) {
 			RequiredParams(5);
-			CheckParamVal(P.Param[2], NumOfLines-StatusLine);
-			CheckParamVal(P.Param[3], NumOfColumns);
-			CheckParamValMax(P.Param[4], NumOfLines-StatusLine);
-			CheckParamValMax(P.Param[5], NumOfColumns);
+			CheckParamVal(P.Param[2], geom.NumOfLines-StatusLine);
+			CheckParamVal(P.Param[3], geom.NumOfColumns);
+			CheckParamValMax(P.Param[4], geom.NumOfLines-StatusLine);
+			CheckParamValMax(P.Param[5], geom.NumOfColumns);
 
 			if (P.Param[2] > P.Param[4] || P.Param[3] > P.Param[5]) {
 				return;
@@ -2844,8 +2844,8 @@ static void CSGT(BYTE b)
 		switch (P.Param[1]) {
 		  case 3:
 			RequiredParams(3);
-			CheckParamVal(P.Param[2], NumOfColumns);
-			CheckParamVal(P.Param[3], NumOfColumns);
+			CheckParamVal(P.Param[2], geom.NumOfColumns);
+			CheckParamVal(P.Param[3], geom.NumOfColumns);
 
 			if (P.Param[2] > P.Param[3]) {
 				return;
@@ -2897,7 +2897,7 @@ static void CSQExchangeColor(void)
 
 static void CSQChangeColumnMode(int width)		// DECCOLM
 {
-	ChangeTerminalSize(width, NumOfLines-StatusLine);
+	ChangeTerminalSize(width, geom.NumOfLines-StatusLine);
 	LRMarginMode = FALSE;
 
 	// DECCOLM では画面がクリアされるのが仕様
@@ -2925,7 +2925,7 @@ static void CSQ_h_Mode() // DECSET
 			break;
 		  case 6: // DECOM
 			if (isCursorOnStatusLine)
-				MoveCursor(0,CursorY);
+				MoveCursor(0,geom.CursorY);
 			else {
 				RelativeOrgMode = TRUE;
 				MoveCursor(0,CursorTop);
@@ -3106,7 +3106,7 @@ static void CSQ_l_Mode()		// DECRST
 			break;
 		  case 6: // DECOM
 			if (isCursorOnStatusLine)
-				MoveCursor(0,CursorY);
+				MoveCursor(0,geom.CursorY);
 			else {
 				RelativeOrgMode = FALSE;
 				MoveCursor(0,0);
@@ -3149,7 +3149,7 @@ static void CSQ_l_Mode()		// DECRST
 		  case 69: // DECLRMM (DECVSSM)
 			LRMarginMode = FALSE;
 			CursorLeftM = 0;
-			CursorRightM = NumOfColumns - 1;
+			CursorRightM = geom.NumOfColumns - 1;
 			break;
 		  case 1000: // Mouse Tracking
 		  case 1001: // Hilite Mouse Tracking
@@ -3248,9 +3248,9 @@ static void SoftReset()
 	if (isCursorOnStatusLine)
 		MoveToMainScreen();
 	CursorTop = 0;
-	CursorBottom = NumOfLines-1-StatusLine;
+	CursorBottom = geom.NumOfLines-1-StatusLine;
 	CursorLeftM = 0;
-	CursorRightM = NumOfColumns - 1;
+	CursorRightM = geom.NumOfColumns - 1;
 	ResetCharSet();
 
 	/* Attribute */
@@ -3260,8 +3260,8 @@ static void SoftReset()
 	// status buffers
 	{
 		PStatusBuff Buff;
-		int save_x = CursorX;
-		int save_y = CursorY;
+		int save_x = geom.CursorX;
+		int save_y = geom.CursorY;
 
 		if (AltScr) {
 			Buff = &SBuff3; // Alternate screen buffer
@@ -3269,11 +3269,11 @@ static void SoftReset()
 		else {
 			Buff = &SBuff1; // Normal screen buffer
 		}
-		CursorX = 0;
-		CursorY = 0;
+		geom.CursorX = 0;
+		geom.CursorY = 0;
 		SaveCursorBuf(Buff);
-		CursorX = save_x;
-		CursorY = save_y;
+		geom.CursorX = save_x;
+		geom.CursorY = save_y;
 	}
 
 	// Saved IME status
@@ -3397,7 +3397,7 @@ static void CSDolRequestMode(void) // DECRQM
 				resp = 2;
 			break;
 		  case 3:	// DECCOLM
-			if (NumOfColumns == 132)
+			if (geom.NumOfColumns == 132)
 				resp = 1;
 			else
 				resp = 2;
@@ -3656,10 +3656,10 @@ static void CSDol(BYTE b)
 	  case 'r': // DECCARA
 	  case 't': // DECRARA
 		RequiredParams(4);
-		CheckParamVal(P.Param[1], NumOfLines-StatusLine);
-		CheckParamVal(P.Param[2], NumOfColumns);
-		CheckParamValMax(P.Param[3], NumOfLines-StatusLine);
-		CheckParamValMax(P.Param[4], NumOfColumns);
+		CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);
+		CheckParamVal(P.Param[2], geom.NumOfColumns);
+		CheckParamValMax(P.Param[3], geom.NumOfLines-StatusLine);
+		CheckParamValMax(P.Param[4], geom.NumOfColumns);
 
 		if (P.Param[1] > P.Param[3] || P.Param[2] > P.Param[4]) {
 			return;
@@ -3705,13 +3705,13 @@ static void CSDol(BYTE b)
 
 	  case 'v': // DECCRA
 		RequiredParams(8);
-		CheckParamVal(P.Param[1], NumOfLines-StatusLine);		// Src Y-start
-		CheckParamVal(P.Param[2], NumOfColumns);			// Src X-start
-		CheckParamValMax(P.Param[3], NumOfLines-StatusLine);	// Src Y-end
-		CheckParamValMax(P.Param[4], NumOfColumns);		// Src X-end
+		CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);		// Src Y-start
+		CheckParamVal(P.Param[2], geom.NumOfColumns);			// Src X-start
+		CheckParamValMax(P.Param[3], geom.NumOfLines-StatusLine);	// Src Y-end
+		CheckParamValMax(P.Param[4], geom.NumOfColumns);		// Src X-end
 		CheckParamVal(P.Param[5], 1);				// Src Page
-		CheckParamVal(P.Param[6], NumOfLines-StatusLine);		// Dest Y
-		CheckParamVal(P.Param[7], NumOfColumns);			// Dest X
+		CheckParamVal(P.Param[6], geom.NumOfLines-StatusLine);		// Dest Y
+		CheckParamVal(P.Param[7], geom.NumOfColumns);			// Dest X
 		CheckParamVal(P.Param[8], 1);				// Dest Page
 
 		if (P.Param[1] > P.Param[3] || P.Param[2] > P.Param[4]) {
@@ -3747,10 +3747,10 @@ static void CSDol(BYTE b)
 		if (P.Param[1] < 32 || (P.Param[1] > 127 && P.Param[1] < 160) || P.Param[1] > 255) {
 			return;
 		}
-		CheckParamVal(P.Param[2], NumOfLines-StatusLine);
-		CheckParamVal(P.Param[3], NumOfColumns);
-		CheckParamValMax(P.Param[4], NumOfLines-StatusLine);
-		CheckParamValMax(P.Param[5], NumOfColumns);
+		CheckParamVal(P.Param[2], geom.NumOfLines-StatusLine);
+		CheckParamVal(P.Param[3], geom.NumOfColumns);
+		CheckParamValMax(P.Param[4], geom.NumOfLines-StatusLine);
+		CheckParamValMax(P.Param[5], geom.NumOfColumns);
 
 		if (P.Param[2] > P.Param[4] || P.Param[3] > P.Param[5]) {
 			return;
@@ -3775,10 +3775,10 @@ static void CSDol(BYTE b)
 	  case 'z': // DECERA
 	  case '{': // DECSERA
 		RequiredParams(4);
-		CheckParamVal(P.Param[1], NumOfLines-StatusLine);
-		CheckParamVal(P.Param[2], NumOfColumns);
-		CheckParamValMax(P.Param[3], NumOfLines-StatusLine);
-		CheckParamValMax(P.Param[4], NumOfColumns);
+		CheckParamVal(P.Param[1], geom.NumOfLines-StatusLine);
+		CheckParamVal(P.Param[2], geom.NumOfColumns);
+		CheckParamValMax(P.Param[3], geom.NumOfLines-StatusLine);
+		CheckParamValMax(P.Param[4], geom.NumOfColumns);
 
 		if (P.Param[1] > P.Param[3] || P.Param[2] > P.Param[4]) {
 			return;
@@ -5427,7 +5427,7 @@ static BOOL DecLocatorReport(int Event, int Button)
 	if (DecLocatorFlag & DecLocatorPixel) {
 		x = LastX + 1;
 		y = LastY + 1;
-		DispConvScreenToWin(vt_src, NumOfColumns+1, NumOfLines+1, &MaxX, &MaxY);
+		DispConvScreenToWin(vt_src, geom.NumOfColumns+1, geom.NumOfLines+1, &MaxX, &MaxY);
 		if (x < 1 || x > MaxX || y < 1 || y > MaxY) {
 			x = -1;
 		}
@@ -5435,7 +5435,7 @@ static BOOL DecLocatorReport(int Event, int Button)
 	else {
 		DispConvWinToScreen(vt_src, LastX, LastY, &x, &y, NULL);
 		x++; y++;
-		if (x < 1 || x > NumOfColumns || y < 1 || y > NumOfLines) {
+		if (x < 1 || x > geom.NumOfColumns || y < 1 || y > geom.NumOfLines) {
 			x = -1;
 		}
 	}
@@ -5574,12 +5574,12 @@ BOOL MouseReport(int Event, int Button, int Xpos, int Ypos) {
 
 		if (x < 1)
 			x = 1;
-		else if (x > NumOfColumns)
-			x = NumOfColumns;
+		else if (x > geom.NumOfColumns)
+			x = geom.NumOfColumns;
 		if (y < 1)
 			y = 1;
-		else if (y > NumOfLines)
-			y = NumOfLines;
+		else if (y > geom.NumOfLines)
+			y = geom.NumOfLines;
 	}
 
 	if (ShiftKey())

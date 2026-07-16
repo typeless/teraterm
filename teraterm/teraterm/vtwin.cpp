@@ -814,7 +814,7 @@ CVTWindow::CVTWindow(HINSTANCE hInstance)
 
 	ResetIME(vt_src);
 
-	BuffChangeWinSize(NumOfColumns,NumOfLines);
+	BuffChangeWinSize(geom.NumOfColumns,geom.NumOfLines);
 
 	ChangeTitle();
 	/* Enable drag-drop */
@@ -916,7 +916,7 @@ void CVTWindow::ButtonUp(POINT p, BOOL Paste)
 		CBStartPaste(HVTWin, FALSE, BracketedPasteMode());
 
 		// スクロール位置をリセット
-		if (WinOrgY != 0) {
+		if (geom.WinOrgY != 0) {
 			DispVScroll(vt_src, SCROLL_BOTTOM, 0);
 		}
 	}
@@ -1407,7 +1407,7 @@ void CVTWindow::InitPasteMenu(HMENU *Menu)
 void CVTWindow::ResetSetup()
 {
 	ChangeFont(vt_src,0);
-	BuffChangeWinSize(WinWidth,WinHeight);
+	BuffChangeWinSize(geom.WinWidth,geom.WinHeight);
 	ChangeCaret(vt_src);
 
 	if (cv.Ready) {
@@ -1474,8 +1474,8 @@ void CVTWindow::SetupTerm()
 		}
 	}
 
-	if ((ts.TerminalWidth!=NumOfColumns) ||
-	    (ts.TerminalHeight!=NumOfLines-StatusLine)) {
+	if ((ts.TerminalWidth!=geom.NumOfColumns) ||
+	    (ts.TerminalHeight!=geom.NumOfLines-StatusLine)) {
 		LockBuffer();
 		HideStatusLine();
 		ChangeTerminalSize(ts.TerminalWidth,
@@ -1483,8 +1483,8 @@ void CVTWindow::SetupTerm()
 		UnlockBuffer();
 	}
 	else if ((ts.TermIsWin>0) &&
-	         ((ts.TerminalWidth!=WinWidth) ||
-	          (ts.TerminalHeight!=WinHeight-StatusLine))) {
+	         ((ts.TerminalWidth!=geom.WinWidth) ||
+	          (ts.TerminalHeight!=geom.WinHeight-StatusLine))) {
 		BuffChangeWinSize(ts.TerminalWidth,ts.TerminalHeight+StatusLine);
 	}
 
@@ -1715,7 +1715,7 @@ void CVTWindow::OnChar(WPARAM nChar, UINT nRepCnt, UINT nFlags)
 	}
 
 	// スクロール位置をリセット
-	if (WinOrgY != 0) {
+	if (geom.WinOrgY != 0) {
 		DispVScroll(vt_src, SCROLL_BOTTOM, 0);
 	}
 }
@@ -2318,7 +2318,7 @@ void CVTWindow::OnKeyDown(WPARAM nChar, UINT nRepCnt, UINT nFlags)
 		return;
 	case KEYDOWN_COMMOUT:
 		// スクロール位置をリセット
-		if (WinOrgY != 0) {
+		if (geom.WinOrgY != 0) {
 			DispVScroll(vt_src, SCROLL_BOTTOM, 0);
 		}
 		return;
@@ -3209,8 +3209,8 @@ void CVTWindow::SetConversionWindowPos()
 {
 	int CellWidth, CellHeight;
 	DispGetCellSize(vt_src, &CellWidth, &CellHeight);
-	int CaretX = (CursorX - WinOrgX) * CellWidth + ts.FontDX;
-	int CaretY = (CursorY - WinOrgY) * CellHeight + ts.FontDY;
+	int CaretX = (geom.CursorX - geom.WinOrgX) * CellWidth + ts.FontDX;
+	int CaretY = (geom.CursorY - geom.WinOrgY) * CellHeight + ts.FontDY;
 	SetConversionWindow(m_hWnd, CaretX, CaretY);
 }
 
@@ -3354,7 +3354,7 @@ static LRESULT ReplyIMERequestDocumentfeed(HWND hWnd, LPARAM lParam)
 				int len;
 				cx = BuffGetCurrentLineData(buf, sizeof(buf));
 				len = cx;
-				for (x=cx; x < NumOfColumns; x++) {
+				for (x=cx; x < geom.NumOfColumns; x++) {
 					const char c = buf[x];
 					if (c != 0 && c != 0x20) {
 						len = x+1;
@@ -3380,10 +3380,10 @@ static LRESULT ReplyIMERequestDocumentfeed(HWND hWnd, LPARAM lParam)
 			{	// カーソルから後ろ、スペース以外が見つかったところを行末とする
 				int x;
 				size_t len = 0;
-				cx = CursorX;
-				strW = BuffGetLineStrW(CursorY, &cx, &len);
+				cx = geom.CursorX;
+				strW = BuffGetLineStrW(geom.CursorY, &cx, &len);
 				len = cx;
-				for (x=cx; x < NumOfColumns; x++) {
+				for (x=cx; x < geom.NumOfColumns; x++) {
 					const wchar_t c = strW[x];
 					if (c == 0 || c == 0x20) {
 						len = x;
@@ -4566,7 +4566,7 @@ void CVTWindow::OnEditPaste()
 	CBStartPaste(HVTWin, FALSE, BracketedPasteMode());
 
 	// スクロール位置をリセット
-	if (WinOrgY != 0) {
+	if (geom.WinOrgY != 0) {
 		DispVScroll(vt_src, SCROLL_BOTTOM, 0);
 	}
 }
@@ -4577,7 +4577,7 @@ void CVTWindow::OnEditPasteCR()
 	CBStartPaste(HVTWin, TRUE, BracketedPasteMode());
 
 	// スクロール位置をリセット
-	if (WinOrgY != 0) {
+	if (geom.WinOrgY != 0) {
 		DispVScroll(vt_src, SCROLL_BOTTOM, 0);
 	}
 }
@@ -4587,7 +4587,7 @@ void CVTWindow::OnEditClearScreen()
 	LockBuffer();
 	BuffClearScreen();
 	if (isCursorOnStatusLine) {
-		MoveCursor(0,CursorY);
+		MoveCursor(0,geom.CursorY);
 	}
 	else {
 		MoveCursor(0,0);
@@ -5192,16 +5192,16 @@ LRESULT CVTWindow::OnDpiChanged(WPARAM wp, LPARAM lp, BOOL calcOnly)
 			DeleteObject(VTFontDefault);
 			ReleaseDC(m_hWnd, TmpDC);
 
-			tmpScreenWidth = WinWidth * tmpFontWidth;
-			tmpScreenHeight = WinHeight * tmpFontHeight;
+			tmpScreenWidth = geom.WinWidth * tmpFontWidth;
+			tmpScreenHeight = geom.WinHeight * tmpFontHeight;
 		} else {
 			// 新しいDPIに合わせてフォントを生成、
 			// クライアント領域のサイズを決定する
 			ChangeFont(vt_src, NewDPI);
 			int CellWidth, CellHeight;
 			DispGetCellSize(vt_src, &CellWidth, &CellHeight);
-			tmpScreenWidth = WinWidth * CellWidth;
-			tmpScreenHeight = WinHeight * CellHeight;
+			tmpScreenWidth = geom.WinWidth * CellWidth;
+			tmpScreenHeight = geom.WinHeight * CellHeight;
 			//AdjustScrollBar();
 		}
 

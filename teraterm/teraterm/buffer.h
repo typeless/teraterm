@@ -195,7 +195,7 @@ extern int StatusLine;
 extern int CursorTop, CursorBottom, CursorLeftM, CursorRightM;
 extern BOOL Wrap;
 
-#define isCursorOnStatusLine (StatusLine && CursorY == NumOfLines-1)
+#define isCursorOnStatusLine (StatusLine && geom.CursorY == geom.NumOfLines-1)
 
 // 領域選択(マウス操作)
 void BuffStartSelect(int Xw, int Yw, BOOL Box, BOOL shift);
