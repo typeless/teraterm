@@ -994,7 +994,14 @@ static void QVSendVDATA(PQVVar qv)
       C = 128;
     /* read data from file */
     file->Seek(file, Pos);
-    file->ReadFile(file,&(qv->PktOut[3]),C);
+    {
+      size_t ReadLen;
+      if (file->ReadFile(file,&(qv->PktOut[3]),C,&ReadLen) == FIO_ERROR) {
+        // a mid-transfer read failure aborts the send instead of sending garbage
+        QVCancel_(qv);
+        return;
+      }
+    }
 	qv->ByteCount = Pos + (LONG)C;
     fv->InfoOp->SetDlgPacketNum(fv, qv->SeqSent);
 	fv->InfoOp->SetDlgByteCount(fv, qv->ByteCount);

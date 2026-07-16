@@ -14,6 +14,7 @@ CXX ?= c++
 
 R      := ../..
 TT     := $(R)/teraterm/teraterm
+TTP    := $(R)/teraterm/ttpfile
 COMMON := $(R)/teraterm/common
 CJSON  := $(R)/libs/cJSON
 CATCH  := $(R)/libs/catch2
@@ -29,11 +30,16 @@ CXXFLAGS := -std=c++23 -g -O1 -Wall $(SAN)
 WINHOST_H  := winhost/windows.h winhost/crtdbg.h
 CODECONV_H := $(COMMON)/codeconv.h $(COMMON)/ttcstd.h $(COMMON)/codemap.h $(CATCH)/catch_amalgamated.hpp $(WINHOST_H)
 AGENT_H    := $(wildcard $(TT)/agent_*.h)
+# ttpfile protocol TUs compile on the host behind the Win32 vocabulary shim
+# (winhost/win32_ttpfile.h, force-included) plus the <sys/utime.h> shim.
+TTP_SHIM   := winhost/win32_ttpfile.h winhost/sys/utime.h
+TTP_H      := $(wildcard $(TTP)/*.h) $(TT)/filesys_proto.h $(TT)/filesys.h $(COMMON)/tttypes.h $(WINHOST_H) $(TTP_SHIM)
+TTP_INC    := -include winhost/win32_ttpfile.h -Iwinhost -I$(TTP) -I$(TT) -I$(COMMON)
 
 # Legacy CHECK()-harness tests (C, self-contained). Kept running verbatim.
 AGENT_TESTS := agent_jsonrpc agent_mcp agent_shmem
 # Catch2 tests (C++), one binary each.
-CATCH_TESTS := codeconv telnet_neg buffcell vtparams titlestack
+CATCH_TESTS := codeconv telnet_neg buffcell vtparams titlestack ttpfile
 
 ALL_TESTS := $(AGENT_TESTS) $(CATCH_TESTS)
 
@@ -113,6 +119,21 @@ $(B)/titlestack_impl.o: $(TT)/titlestack.cpp $(TT)/titlestack.h | $(B)
 
 $(B)/titlestack: test_titlestack.cpp $(TT)/titlestack.h $(B)/titlestack_impl.o $(B)/catch_amalgamated.o | $(B)
 	$(CXX) $(CXXFLAGS) -I$(TT) -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
+
+# ttpfile: real protocol state machines (xmodem.c &c.) compiled as C behind the
+# Win32 shim, driven via ttpfile_harness against a fake TFileIO/TComm. The Catch2
+# TU stays shim-free — it sees only the plain-C ttpfile_harness.h boundary.
+$(B)/ttp_xmodem.o: $(TTP)/xmodem.c $(TTP_H) | $(B)
+	$(CC) $(CFLAGS) $(TTP_INC) -c $< -o $@
+
+$(B)/ttp_ftlib.o: $(TTP)/ftlib.c $(TTP_H) | $(B)
+	$(CC) $(CFLAGS) $(TTP_INC) -c $< -o $@
+
+$(B)/ttpfile_harness.o: ttpfile_harness.c ttpfile_harness.h $(TTP_H) | $(B)
+	$(CC) $(CFLAGS) $(TTP_INC) -c $< -o $@
+
+$(B)/ttpfile: test_ttpfile.cpp ttpfile_harness.h $(B)/ttpfile_harness.o $(B)/ttp_xmodem.o $(B)/ttp_ftlib.o $(B)/catch_amalgamated.o | $(B)
+	$(CXX) $(CXXFLAGS) -I. -I$(CATCH) $(filter %.cpp %.o,$^) -o $@
 
 clean:
 	@rm -rf $(B)

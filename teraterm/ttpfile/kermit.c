@@ -75,6 +75,7 @@ typedef struct {
 	const wchar_t *UILanguageFileW;
 
 	BOOL FileOpen;
+	BOOL ReadError;   // a mid-transfer file read failed; the send must abort, not send EOF
 	LONG ByteCount;
 
 	int ProgStat;
@@ -884,10 +885,17 @@ static BOOL KmtEncode(PKmtVar kv)
 		b = kv->NextByte;
 		kv->NextByteFlag = FALSE;
 	}
-	else if (file->ReadFile(file,&b,1)==0)
-		return FALSE;
-	else
+	else {
+		size_t ReadLen;
+		FioStatus rst = file->ReadFile(file,&b,1,&ReadLen);
+		if (rst == FIO_ERROR) {
+			kv->ReadError = TRUE;
+			return FALSE;
+		}
+		if (rst == FIO_EOF)
+			return FALSE;
 		kv->ByteCount++;
+	}
 
 	Len = 0;
 
@@ -922,20 +930,34 @@ static BOOL KmtEncode(PKmtVar kv)
 	TempStr[Len] = 0;
 
 	kv->RepeatCount = 1;
-	if (file->ReadFile(file,&(kv->NextByte),1)==1)
 	{
-		kv->ByteCount++;
-		kv->NextByteFlag = TRUE;
+		size_t ReadLen;
+		FioStatus rst = file->ReadFile(file,&(kv->NextByte),1,&ReadLen);
+		if (rst == FIO_ERROR)
+			kv->ReadError = TRUE;
+		else if (rst == FIO_OK)
+		{
+			kv->ByteCount++;
+			kv->NextByteFlag = TRUE;
+		}
 	}
 
 	while (kv->RepeatFlag && kv->NextByteFlag &&
 		(kv->NextByte==b) && (kv->RepeatCount<94))
 	{
 		kv->RepeatCount++;
-		if (file->ReadFile(file,&(kv->NextByte),1)==0)
-			kv->NextByteFlag = FALSE;
-		else
-			kv->ByteCount++;
+		{
+			size_t ReadLen;
+			FioStatus rst = file->ReadFile(file,&(kv->NextByte),1,&ReadLen);
+			if (rst == FIO_ERROR) {
+				kv->ReadError = TRUE;
+				kv->NextByteFlag = FALSE;
+			}
+			else if (rst == FIO_EOF)
+				kv->NextByteFlag = FALSE;
+			else
+				kv->ByteCount++;
+		}
 	}
 
 	if (Len*kv->RepeatCount > Len+2)
@@ -988,6 +1010,7 @@ static void KmtSendNextData(PKmtVar kv)
 	fv->InfoOp->SetDlgTime(fv, kv->StartTime, kv->ByteCount);
 	DataLen = 0;
 	DataLenNew = 0;
+	kv->ReadError = FALSE;
 
 	// Long Packet
 	//   リモートの CAPAS が有効、かつ Tera Term の設定が有効
@@ -1011,6 +1034,16 @@ static void KmtSendNextData(PKmtVar kv)
 		if (NextFlag) DataLenNew = DataLen + strlen(kv->ByteStr);
 	}
 	if (NextFlag) kv->RepeatCount++;
+
+	if (kv->ReadError) {
+		// a mid-transfer file read failed: abort with an Error packet, never a clean EOF
+		KmtIncPacketNum(kv);
+		strncpy_s(&(kv->PktOut[4]), sizeof(kv->PktOut) - 4, "File read error", _TRUNCATE);
+		KmtMakePacket(kv, (BYTE)(kv->PktNum - kv->PktNumOffset), (BYTE)'E', strlen(&(kv->PktOut[4])));
+		KmtSendPacket(kv);
+		kv->KmtMode = IdKmtQuit;
+		return;
+	}
 
 	if (DataLen==0)
 	{

@@ -676,11 +676,26 @@ static BOOL XSendPacket(PXVar xv)
 			xv->PktOut[2] = ~xv->PktNumSent;
 
 			i = 1;
-			while ((i <= xv->DataLen) && xv->FileOpen &&
-				   (file->ReadFile(file, &b, 1) == 1)) {
+			BOOL ReadError = FALSE;
+			while ((i <= xv->DataLen) && xv->FileOpen) {
+				size_t ReadLen;
+				FioStatus rst = file->ReadFile(file, &b, 1, &ReadLen);
+				if (rst == FIO_ERROR) {
+					ReadError = TRUE;
+					break;
+				}
+				if (rst == FIO_EOF) {
+					break;
+				}
 				xv->PktOut[2 + i] = b;
 				i++;
 				xv->ByteCount++;
+			}
+			if (ReadError) {
+				// a mid-transfer read failure must abort, not pad-and-EOT as a completed send
+				XCancel_(xv);
+				update_dialog(xv, TRUE);
+				return FALSE;
 			}
 
 			if (i > 1) {

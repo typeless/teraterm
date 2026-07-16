@@ -33,11 +33,21 @@
 #include <sys/utime.h>
 #include <windows.h>	// for BOOL
 
+// Read outcome. Distinguishes a clean end-of-file from an I/O failure, which a
+// size_t byte count cannot: both a failed Win32 ReadFile and a legitimate EOF
+// return 0 bytes, so callers that only saw the count silently treated a
+// mid-transfer read error as a completed file.
+typedef enum {
+	FIO_OK = 0,  // read some bytes; count returned via the out-param
+	FIO_EOF,     // clean end of file, no more data
+	FIO_ERROR,   // read failed
+} FioStatus;
+
 typedef struct FileIO {
 	// file I/O, Filename related functions
 	BOOL (*OpenRead)(struct FileIO *fv, const char *filenameU8);
 	BOOL (*OpenWrite)(struct FileIO *fv, const char *filenameU8);
-	size_t (*ReadFile)(struct FileIO *fv, void *buf, size_t bytes);
+	FioStatus (*ReadFile)(struct FileIO *fv, void *buf, size_t bytes, size_t *read_bytes);
 	size_t (*WriteFile)(struct FileIO *fv, const void *buf, size_t bytes);
 	void (*Close)(struct FileIO *fv);
 	int (*Seek)(struct FileIO *fv, size_t offset);

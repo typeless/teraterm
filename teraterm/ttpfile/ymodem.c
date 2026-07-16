@@ -1030,16 +1030,32 @@ static BOOL YSendPacket(PYVar yv)
 				TFileIO *file = yv->file;
 				BYTE fsym = 0;
 				size_t idx = 1;
+				BOOL ReadError = FALSE;
 
 				yv->__DataLen = current_packet_size;
 
-				while ((idx <= current_packet_size) && yv->FileOpen &&
-				       (1 == file->ReadFile(file, &fsym, 1)))
+				while ((idx <= current_packet_size) && yv->FileOpen)
 				{
+					size_t ReadLen;
+					FioStatus rst = file->ReadFile(file, &fsym, 1, &ReadLen);
+					if (rst == FIO_ERROR) {
+						ReadError = TRUE;
+						break;
+					}
+					if (rst == FIO_EOF) {
+						break;
+					}
 					// TODO: remove magic number.
 					yv->PktOut[2 + idx] = fsym;
 					++idx;
 					yv->ByteCount++;
+				}
+
+				if (ReadError) {
+					// a mid-transfer read failure must abort, not pad-and-EOT as success
+					fv->Success = FALSE;
+					YCancel_(yv);
+					return FALSE;
 				}
 
 				// No bytes were read.
