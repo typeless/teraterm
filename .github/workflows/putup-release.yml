@@ -188,3 +188,34 @@ jobs:
           path: |
             doc/en/teraterm.chm
             doc/ja/teratermj.chm
+
+  # [2b] Build the Cygwin companion (cygterm.exe + cygterm+.tar.gz) with the
+  # Cygwin gcc toolchain -- putup/clang-cl cannot produce it. One x86_64 build is
+  # shared across all three installers. Standalone.
+  cygterm:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Cygwin (gcc-g++, make, tar) to buildtools
+        shell: cmd
+        working-directory: buildtools
+        run: install_cygwin.bat
+
+      - name: Build cygterm.exe + cygterm+.tar.gz
+        shell: cmd
+        run: |
+          set PATH=%CD%\buildtools\cygwin64\bin;%PATH%
+          cd cygwin\cygterm
+          make cygterm+-x86_64 -j || exit /b 1
+          make archive || exit /b 1
+          dir cygterm+-x86_64\cygterm.exe cygterm+.tar.gz
+
+      - name: Upload cygterm
+        uses: actions/upload-artifact@v4
+        with:
+          name: cygterm
+          path: |
+            cygwin/cygterm/cygterm+-x86_64/cygterm.exe
+            cygwin/cygterm/cygterm.cfg
+            cygwin/cygterm/cygterm+.tar.gz
