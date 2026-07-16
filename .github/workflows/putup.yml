@@ -149,6 +149,9 @@ jobs:
           file build-win/teraterm/teraterm/ttermpro.exe | grep -q 'PE32+'
           file build-win/ttssh2/ttxssh/ttxssh.dll | grep -q 'PE32+'
 
+      - name: Release-manifest gate (every shipped binary is built)
+        run: sh ci_scripts/check_release_manifest.sh build-win
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
