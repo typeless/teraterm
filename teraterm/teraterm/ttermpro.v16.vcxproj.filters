@@ -75,7 +75,7 @@
     <ClCompile Include="telnet.c">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
-    <ClCompile Include="telnet_neg.c">
+    <ClCompile Include="telnet_neg.cpp">
       <Filter>Source Files %28C%29</Filter>
     </ClCompile>
     <ClCompile Include="ttdde.c">

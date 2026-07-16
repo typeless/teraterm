@@ -451,7 +451,7 @@
     <ClCompile Include="tekfont_pp.cpp" />
     <ClCompile Include="tekwin.cpp" />
     <ClCompile Include="telnet.c" />
-    <ClCompile Include="telnet_neg.c" />
+    <ClCompile Include="telnet_neg.cpp" />
     <ClCompile Include="teraprn.cpp" />
     <ClCompile Include="teraterm.cpp" />
     <ClCompile Include="term_pp.cpp" />
