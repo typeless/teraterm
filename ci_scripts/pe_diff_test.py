@@ -105,6 +105,15 @@ def test_manifest_resource_not_asserted():
     assert "RT_MANIFEST" not in a["resource_types"]
 
 
+def test_difftree_empty_intersection_fails():
+    """A diff-tree over trees that share no PE basenames must FAIL, not silently
+    report equivalence: a green gate on zero comparisons would falsely license
+    deleting the MSVC reference (e.g. the msbuild zip layout diverged)."""
+    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+        ns = type("NS", (), {"tree_a": d1, "tree_b": d2})()
+        assert pe_diff.cmd_diff_tree(ns) == 1
+
+
 # --- real-PE tests (skipped if no local build) -------------------------------
 
 X64 = os.path.join(REPO, "build-win", "teraterm", "teraterm", "ttermpro.exe")
