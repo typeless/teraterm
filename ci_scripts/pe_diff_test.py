@@ -69,12 +69,67 @@ def test_missing_import_dll_detected():
     assert any("import DLLs" in d and "user32.dll" in d for d in diffs), diffs
 
 
-def test_export_mismatch_detected():
+def test_export_delta_tolerated():
+    """Cross-toolchain, lld-link and MSVC export different symbol sets (dllexport
+    defaults vs .def); the fork API is verified via consumers' imports, so exports
+    are informational, not gated."""
     a = _base_facets()
     b = copy.deepcopy(a)
-    b["exports"] = ["GetParam"]
-    diffs = pe_diff.compare(a, b)
-    assert any("exports" in d and "SetParam" in d for d in diffs), diffs
+    b["exports"] = ["GetParam"]  # dropped SetParam
+    assert pe_diff.compare(a, b) == []
+
+
+def test_section_delta_tolerated():
+    """Section names are toolchain-defined (lld .gfids/_RDATA/.retplne/.tls vs
+    MSVC .fptable); never gated."""
+    a = _base_facets()
+    b = copy.deepcopy(a)
+    b["sections"] = [".text", ".rdata", ".fptable"]  # MSVC-style vs lld-style
+    assert pe_diff.compare(a, b) == []
+
+
+def test_system_import_delta_tolerated_with_intra_dlls():
+    """With a fork-DLL allowlist, imports from system DLLs (kernel32, user32, ...)
+    differ by toolchain + CRT version and are not gated."""
+    a = _base_facets()
+    b = copy.deepcopy(a)
+    b["imports"]["kernel32.dll"] = ["CreateFileW"]  # dropped ExitProcess
+    del b["imports"]["user32.dll"]
+    assert pe_diff.compare(a, b, intra_dlls={"ttpcmn.dll"}) == []
+
+
+def test_intra_dll_import_asserted():
+    """Imports from a fork DLL present in the tree ARE gated -- this is the
+    meaningful cross-toolchain signal (does the consumer call the same fork API)."""
+    a = _base_facets()
+    a["imports"]["ttpcmn.dll"] = ["GetParam", "RegWin"]
+    b = copy.deepcopy(a)
+    b["imports"]["ttpcmn.dll"] = ["GetParam"]  # dropped RegWin
+    diffs = pe_diff.compare(a, b, intra_dlls={"ttpcmn.dll"})
+    assert any("ttpcmn.dll" in d and "RegWin" in d for d in diffs), diffs
+
+
+def test_ordinal_name_import_normalized():
+    """MSVC's import lib references a fork DLL by ordinal; lld-link's by name. For
+    the SAME function these are equivalent once resolved via the DLL's export map."""
+    a = _base_facets()
+    a["imports"]["ttpcmn.dll"] = ["RegWin", "GetParam"]        # lld: by name
+    b = copy.deepcopy(a)
+    b["imports"]["ttpcmn.dll"] = ["#ordinal:10", "#ordinal:62"]  # link.exe: by ordinal
+    omap = {"ttpcmn.dll": {10: "RegWin", 62: "GetParam"}}
+    assert pe_diff.compare(a, b, intra_dlls={"ttpcmn.dll"}, ordinal_maps=omap) == []
+
+
+def test_ordinal_import_real_mismatch_still_caught():
+    """Normalization must not mask a real divergence: an ordinal resolving to a
+    DIFFERENT function than the other side imports is still a difference."""
+    a = _base_facets()
+    a["imports"]["ttpcmn.dll"] = ["RegWin"]
+    b = copy.deepcopy(a)
+    b["imports"]["ttpcmn.dll"] = ["#ordinal:11"]  # 11 = UnregWin, not RegWin
+    omap = {"ttpcmn.dll": {10: "RegWin", 11: "UnregWin"}}
+    diffs = pe_diff.compare(a, b, intra_dlls={"ttpcmn.dll"}, ordinal_maps=omap)
+    assert diffs, "RegWin vs UnregWin must be flagged"
 
 
 def test_version_field_mismatch_detected():

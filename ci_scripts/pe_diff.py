@@ -152,7 +152,10 @@ def extract(path):
 
 # --- comparison --------------------------------------------------------------
 
-ASSERTED = ("machine", "subsystem", "is_dll", "sections", "imports", "exports",
+# Cross-toolchain (clang-cl+lld vs MSVC) asserted facets. Section names, exports,
+# and system/CRT import symbols are toolchain-defined and NOT gated (see compare);
+# what stays asserted is source/spec-driven and toolchain-invariant.
+ASSERTED = ("machine", "subsystem", "is_dll", "imports",
             "resource_types", "has_version_info", "version_fixed")
 
 # Reference-free self-check spec (survives the eventual CMake/MSVC deletion).
@@ -169,14 +172,18 @@ EXPECTED_MACHINE = {
 MANIFEST_APPS = ("ttermpro.exe", "ttpmacro.exe", "ttpmenu.exe")
 
 
-def compare(a, b):
+def compare(a, b, intra_dlls=None, ordinal_maps=None):
     """Return a list of human-readable strings, one per asserted-facet mismatch.
-    Empty list == structurally equivalent."""
+    Empty list == structurally equivalent. intra_dlls, when given, is the set of
+    fork DLL basenames present in the build tree; only imports from those modules
+    are gated (system/CRT imports are toolchain noise). ordinal_maps, when given,
+    is {dll: {ordinal: name}} used to normalize by-ordinal imports (link.exe) to
+    the by-name form (lld-link) so the two are compared as the same symbol."""
     diffs = []
     for key in ASSERTED:
         if key == "imports":
-            diffs += _diff_imports(a["imports"], b["imports"])
-        elif key in ("sections", "exports", "resource_types"):
+            diffs += _diff_imports(a["imports"], b["imports"], intra_dlls, ordinal_maps)
+        elif key == "resource_types":
             diffs += _diff_set(key, a[key], b[key])
         elif key == "version_fixed":
             diffs += _diff_dict("version", a[key], b[key])
@@ -195,11 +202,49 @@ def _diff_set(name, a, b):
     return out
 
 
-def _diff_imports(a, b):
+def _diff_imports(a, b, intra_dlls=None, ordinal_maps=None):
+    # Cross-toolchain, imports from system/CRT DLLs (kernel32, user32, ...) differ
+    # by toolchain and CRT version. Given an in-tree fork-DLL allowlist, gate only
+    # imports from those modules -- the meaningful "same fork API usage" signal;
+    # otherwise (single-binary diff) compare all.
+    if intra_dlls is not None:
+        a = {d: s for d, s in a.items() if d in intra_dlls}
+        b = {d: s for d, s in b.items() if d in intra_dlls}
+    a = _canon_imports(a, ordinal_maps)
+    b = _canon_imports(b, ordinal_maps)
     out = _diff_set("import DLLs", a.keys(), b.keys())
     for dll in sorted(set(a) & set(b)):
         out += _diff_set(f"imports[{dll}]", a[dll], b[dll])
     return out
+
+
+def _canon_imports(imports, ordinal_maps):
+    """Resolve `#ordinal:N` imports of a fork DLL to the exported name via that
+    DLL's ordinal->name map, so an ordinal import (link.exe) and a name import
+    (lld-link) of the same function compare equal."""
+    if not ordinal_maps:
+        return imports
+    out = {}
+    for dll, syms in imports.items():
+        omap = ordinal_maps.get(dll)
+        if omap:
+            syms = [omap.get(int(s[len("#ordinal:"):]), s)
+                    if s.startswith("#ordinal:") else s
+                    for s in syms]
+        out[dll] = sorted(set(syms))
+    return out
+
+
+def _export_ordinal_map(path):
+    """{ordinal: name} for a DLL's named exports (for import normalization)."""
+    pe = pefile.PE(path, fast_load=True)
+    pe.parse_data_directories(
+        directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_EXPORT"]])
+    exp = getattr(pe, "DIRECTORY_ENTRY_EXPORT", None)
+    omap = {s.ordinal: s.name.decode("latin1")
+            for s in (exp.symbols if exp else []) if s.name}
+    pe.close()
+    return omap
 
 
 def _diff_dict(name, a, b):
@@ -288,9 +333,15 @@ def cmd_diff_tree(args):
         print(f"FAIL: no PE binaries in common between {args.tree_a} and {args.tree_b} "
               f"-- nothing to compare, refusing to report equivalence")
         return 1
+    # Fork DLLs present in either tree: imports from these are gated (inter-module
+    # API usage); imports from system/CRT DLLs outside the tree are toolchain noise.
+    intra_dlls = {n for n in (set(pa) | set(pb)) if n.endswith(".dll")}
+    # ordinal->name map per in-tree DLL, so a by-ordinal import (link.exe) and a
+    # by-name import (lld-link) of the same fork function compare equal.
+    ordinal_maps = {n: _export_ordinal_map(pa.get(n) or pb[n]) for n in intra_dlls}
     failed = 0
     for name in common:
-        diffs = compare(extract(pa[name]), extract(pb[name]))
+        diffs = compare(extract(pa[name]), extract(pb[name]), intra_dlls, ordinal_maps)
         if diffs:
             failed += 1
             print(f"FAIL {name}: {len(diffs)} difference(s)")
