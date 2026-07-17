@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 import pefile
@@ -218,20 +219,31 @@ def _diff_imports(a, b, intra_dlls=None, ordinal_maps=None):
     return out
 
 
+_STDCALL_DECORATION = re.compile(r"^_(.+)@\d+$")
+
+
+def _undecorate(sym):
+    # x86 stdcall decoration: lld-link keeps _name@N on imports, link.exe uses the
+    # bare name. Same function; strip to the bare name so they compare equal.
+    m = _STDCALL_DECORATION.match(sym)
+    return m.group(1) if m else sym
+
+
 def _canon_imports(imports, ordinal_maps):
-    """Resolve `#ordinal:N` imports of a fork DLL to the exported name via that
-    DLL's ordinal->name map, so an ordinal import (link.exe) and a name import
-    (lld-link) of the same function compare equal."""
-    if not ordinal_maps:
-        return imports
+    """Canonicalize import symbols so the two toolchains' representations of the
+    same fork function compare equal: resolve `#ordinal:N` to the exported name via
+    the DLL's ordinal->name map (link.exe imports by ordinal, lld-link by name),
+    and strip x86 stdcall decoration."""
+    ordinal_maps = ordinal_maps or {}
     out = {}
     for dll, syms in imports.items():
-        omap = ordinal_maps.get(dll)
-        if omap:
-            syms = [omap.get(int(s[len("#ordinal:"):]), s)
-                    if s.startswith("#ordinal:") else s
-                    for s in syms]
-        out[dll] = sorted(set(syms))
+        omap = ordinal_maps.get(dll, {})
+        canon = []
+        for s in syms:
+            if s.startswith("#ordinal:"):
+                s = omap.get(int(s[len("#ordinal:"):]), s)
+            canon.append(_undecorate(s))
+        out[dll] = sorted(set(canon))
     return out
 
 

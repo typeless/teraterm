@@ -132,6 +132,16 @@ def test_ordinal_import_real_mismatch_still_caught():
     assert diffs, "RegWin vs UnregWin must be flagged"
 
 
+def test_x86_stdcall_decoration_normalized():
+    """On x86, lld-link imports a stdcall fork function by its decorated name
+    (_parse_port_from_buf@4); link.exe by the undecorated name. Same function."""
+    a = _base_facets()
+    a["imports"]["ttpcmn.dll"] = ["_parse_port_from_buf@4", "GetParam"]  # lld x86
+    b = copy.deepcopy(a)
+    b["imports"]["ttpcmn.dll"] = ["parse_port_from_buf", "GetParam"]     # link.exe
+    assert pe_diff.compare(a, b, intra_dlls={"ttpcmn.dll"}) == []
+
+
 def test_version_field_mismatch_detected():
     a = _base_facets()
     b = copy.deepcopy(a)
