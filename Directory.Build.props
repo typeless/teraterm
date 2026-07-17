@@ -1,0 +1,14 @@
+<Project>
+  <!-- The C++ sources were modernized to C++17 (e.g. std::optional/std::nullopt in
+       titlestack.cpp); the putup build sets /std:c++17 tree-wide. The classic
+       .vcxproj files carry no <LanguageStandard>, so MSBuild defaults them to C++14
+       and the MSVC build fails to compile the modernized sources. Bump every MSVC
+       project to C++17 to match putup. MSBuild auto-imports this file into every
+       project; putup uses Tupfiles and ignores it, so the shipped putup binaries are
+       unaffected. Removed in Phase 5 along with the rest of the vcxproj build. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
