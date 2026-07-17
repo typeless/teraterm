@@ -284,6 +284,10 @@ def cmd_diff_tree(args):
         print(f"note: {len(only_a)} binary(ies) only in A (not compared): {only_a}")
     if only_b:
         print(f"note: {len(only_b)} binary(ies) only in B (not compared): {only_b}")
+    if not common:
+        print(f"FAIL: no PE binaries in common between {args.tree_a} and {args.tree_b} "
+              f"-- nothing to compare, refusing to report equivalence")
+        return 1
     failed = 0
     for name in common:
         diffs = compare(extract(pa[name]), extract(pb[name]))
