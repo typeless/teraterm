@@ -139,6 +139,7 @@ jobs:
   # dependency on stage-linux) so it verifies on its own.
   chm:
     runs-on: windows-2022
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -194,6 +195,7 @@ jobs:
   # shared across all three installers. Standalone.
   cygterm:
     runs-on: windows-2022
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -226,6 +228,7 @@ jobs:
   package:
     runs-on: windows-2022
     needs: [stage-linux, chm, cygterm]
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
