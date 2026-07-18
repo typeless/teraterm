@@ -1,6 +1,9 @@
 include_rules
 
-# TTXChangeFontSize.dll — links common_static; includes tt-version.h -> svnversion.h.
+# TTXChangeFontSize.dll — links ttpcmn (ahead of common_static so the shared ttlib
+# functions it uses, e.g. IsWindows2000OrLater, resolve as imports from ttpcmn.dll
+# rather than being pulled statically out of common_static.lib) + common_static
+# (for inifile_com etc.); includes tt-version.h -> svnversion.h.
 COMMON_GENDIR = $(TUP_VARIANT_OUTPUTDIR)/../../teraterm/common
 CFLAGS += -I$(S)/teraterm/common -I$(S)/teraterm/teraterm -I$(COMMON_GENDIR)
 
@@ -12,4 +15,4 @@ srcs_c += TTXChangeFontSize.c
 LDFLAGS += /DLL /IMPLIB:$(TUP_VARIANT_OUTPUTDIR)/TTXChangeFontSize.lib
 LDFLAGS += user32.lib gdi32.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib
 LDFLAGS += shlwapi.lib comctl32.lib winspool.lib winmm.lib imm32.lib version.lib setupapi.lib imagehlp.lib gdiplus.lib
-: {objs} $(S)/teraterm/common/common_static.lib |> !link |> TTXChangeFontSize.dll | TTXChangeFontSize.lib <implib>
+: {objs} $(S)/teraterm/ttpcmn/ttpcmn.lib $(S)/teraterm/common/common_static.lib |> !link |> TTXChangeFontSize.dll | TTXChangeFontSize.lib <implib>
