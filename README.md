@@ -2,8 +2,8 @@
 
 | CI | Workflow | Status |
 |----|----------|--------|
-| GitHub Actions | Build Installer | [![Build Status](https://github.com/TeraTermProject/teraterm/actions/workflows/msbuild.yml/badge.svg)](https://github.com/TeraTermProject/teraterm/actions/workflows/msbuild.yml) |
-| GitHub Actions | Bulid with cmake (experimental) |[![Bulid with cmake (experimental)](https://github.com/TeraTermProject/teraterm/actions/workflows/build_cmake.yml/badge.svg)](https://github.com/TeraTermProject/teraterm/actions/workflows/build_cmake.yml) |
+| GitHub Actions | Build (putup / clang-cl + xwin) | [![Build](https://github.com/typeless/teraterm/actions/workflows/putup.yml/badge.svg)](https://github.com/typeless/teraterm/actions/workflows/putup.yml) |
+| GitHub Actions | Release (putup) | [![Release](https://github.com/typeless/teraterm/actions/workflows/putup-release.yml/badge.svg)](https://github.com/typeless/teraterm/actions/workflows/putup-release.yml) |
 
 Tera Term is a free software terminal emulator
 
