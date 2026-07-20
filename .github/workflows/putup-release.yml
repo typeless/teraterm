@@ -27,6 +27,11 @@ on:
 permissions:
   contents: read
 
+# Pinned so install.sh skips its "resolve latest" GitHub API query, which fails
+# intermittently on runners and takes the whole job with it. Bump deliberately.
+env:
+  PUTUP_VERSION: v2.2.0
+
 jobs:
   stage-linux:
     runs-on: ubuntu-latest
