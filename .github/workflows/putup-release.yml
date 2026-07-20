@@ -347,6 +347,6 @@ jobs:
               dist/*.exe dist/*.zip dist/*.sha256sum dist/*.sha512sum
           else
             gh release create "$TAG" --repo "$REPO" \
-              --title "Tera Term $TAG" --prerelease --generate-notes \
+              --title "Tera Term $TAG" --latest --generate-notes \
               dist/*.exe dist/*.zip dist/*.sha256sum dist/*.sha512sum
           fi
