@@ -1,17 +1,16 @@
 name: Release (putup)
 
 # Produce the shipped Tera Term release artifacts from the putup (clang-cl + xwin)
-# build. Tag-triggered; workflow_dispatch for dry runs while this is built out.
+# build. Tag-triggered; workflow_dispatch for dry runs.
 #
-# Being assembled incrementally:
-#   [1] stage-linux   -- DONE: putup build x86/x64/arm64 -> flat payload + _pdb.
-#   [2] package-win   -- DONE: CHM (hhc) + cygterm (Cygwin gcc) + ISCC installers.
-#   [3] differential  -- DONE: pe_diff.py diff-tree putup vs the msbuild reference.
-#   [4] publish       -- DONE: gh release create.
+# Jobs:
+#   stage-linux -- putup build x86/x64/arm64 -> flat payload + _pdb.
+#   package-win -- CHM (hhc) + cygterm (Cygwin gcc) + ISCC installers.
+#   publish     -- gh release create.
 #
-# NOTE: the build steps below duplicate .github/workflows/putup.yml; once the
-# Windows packaging is proven they should be extracted into a reusable
-# (workflow_call) workflow that both this and putup.yml invoke.
+# NOTE: the build steps below duplicate .github/workflows/putup.yml; they should be
+# extracted into a reusable (workflow_call) workflow that both this and putup.yml
+# invoke.
 
 on:
   push:
@@ -317,104 +316,9 @@ jobs:
             dist/*.sha256sum
             dist/*.sha512sum
 
-  # [3] Transitional differential gate (tag / dispatch only -- a PR has no MSVC
-  # reference, so it self-skips). Waits for the msbuild.yml run of the SAME commit,
-  # then diffs every putup (clang-cl) PE against its MSVC twin with pe_diff.py. A
-  # green run is the signal that LICENSES the Phase-5 deletion of the CMake /
-  # vcxproj / MSVC build. It does not gate `publish`: the release ships regardless,
-  # and a structural difference merely turns the run red for investigation. Runs on
-  # Linux -- only PRODUCING the MSVC reference needs Windows; parsing PE does not.
-  differential:
-    runs-on: ubuntu-latest
-    needs: [stage-linux]
-    if: github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pefile
-        run: python3 -m pip install --break-system-packages --quiet pefile
-
-      - name: Download putup staged payloads
-        uses: actions/download-artifact@v4
-        with:
-          pattern: staged-*
-          merge-multiple: true
-
-      - name: Fetch the MSVC reference (msbuild.yml, same commit)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -eu
-          # Both workflows fire on the same tag; find msbuild's run for this commit.
-          # stage-linux (this job's dependency) takes minutes, so the run is already
-          # registered by now -- the short retry only covers rare registration lag.
-          run_id=""
-          for i in $(seq 1 6); do
-            run_id=$(gh run list --workflow=msbuild.yml --commit="$SHA" --repo "$REPO" \
-                       --json databaseId --jq '.[0].databaseId // empty' || true)
-            [ -n "$run_id" ] && break
-            echo "msbuild run for $SHA not found yet (attempt $i); waiting 20s..."
-            sleep 20
-          done
-          if [ -z "$run_id" ]; then
-            # A v* tag co-triggers msbuild.yml, so on a tag its absence is a real
-            # failure. A lone workflow_dispatch does NOT trigger msbuild -- there is
-            # no MSVC reference to diff against, so skip (mirrors the PR self-skip).
-            case "${GITHUB_REF:-}" in
-              refs/tags/*) echo "::error::no msbuild.yml run for tag $SHA -- the MSVC reference must co-trigger"; exit 1 ;;
-              *) echo "::warning::no msbuild.yml reference for $SHA (lone dispatch) -- skipping the differential gate"; exit 0 ;;
-            esac
-          fi
-          echo "msbuild reference run: $run_id"
-
-          # Block until msbuild finishes (it starts with us but runs longer). Cap the
-          # wait so a stuck reference run fails here rather than billing to the 6h job
-          # limit; msbuild's 3-arch worst case is well under 90 min.
-          status=""
-          for i in $(seq 1 180); do
-            status=$(gh run view "$run_id" --repo "$REPO" --json status --jq '.status')
-            echo "msbuild run $run_id: $status"
-            [ "$status" = "completed" ] && break
-            sleep 30
-          done
-          [ "$status" = "completed" ] || { echo "::error::msbuild run $run_id did not finish within the wait cap"; exit 1; }
-          echo "msbuild conclusion: $(gh run view "$run_id" --repo "$REPO" --json conclusion --jq '.conclusion')"
-
-          # Pull each per-arch portable zip (the payload, not the *_pdb.zip) and
-          # unpack it. pe_diff walks recursively, so the inner dir name is irrelevant.
-          for msarch in x86 x64 arm64; do
-            if ! gh run download "$run_id" --repo "$REPO" \
-                   --pattern "BUILD-*-VS2022-${msarch}-zip" --dir "ref-$msarch"; then
-              echo "::error::no msbuild $msarch zip on run $run_id (did the MSVC $msarch build fail?)"
-              exit 1
-            fi
-            zip=$(find "ref-$msarch" -name '*.zip' ! -name '*_pdb.zip' | head -1)
-            [ -n "$zip" ] || { echo "::error::no portable zip inside the $msarch reference artifact"; exit 1; }
-            unzip -q "$zip" -d "ref-$msarch/tree"
-          done
-
-      - name: Structural differential (putup clang-cl vs MSVC, per arch)
-        run: |
-          set -eu
-          rc=0
-          # <putup staged dir suffix>:<msbuild arch token>
-          for pair in "x86_64:x64" "x86:x86" "arm64:arm64"; do
-            putup="teraterm-${pair%%:*}"
-            msarch="${pair##*:}"
-            echo "::group::diff $putup  vs  msbuild $msarch"
-            python3 ci_scripts/pe_diff.py diff-tree "$putup" "ref-$msarch/tree" || rc=1
-            echo "::endgroup::"
-          done
-          exit $rc
-
-  # [4] Publish the GitHub Release (tag pushes only -- dispatch / PR have no tag to
+  # Publish the GitHub Release (tag pushes only -- dispatch / PR have no tag to
   # release, so this self-skips). Attaches the installers, portable + PDB zips, and
-  # checksums that `package` built. Independent of `differential`.
+  # checksums that `package` built.
   publish:
     runs-on: ubuntu-latest
     needs: [package]
