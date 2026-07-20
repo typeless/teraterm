@@ -28,10 +28,16 @@
 
 #pragma once
 
+// MAJOR/MINOR/PATCH track the UPSTREAM base this fork is built from -- they are
+// read as upstream-semantic by ttset RunningVersion, the TERATERM.INI Version
+// key, the ttpcmn filemap name and the TTL cur_major/cur_minor macros, so they
+// move only on a rebase. The fork's own release number lives in SUBSTR and
+// increments independently. No spaces: svnrev.pl splices SUBSTR straight into
+// the installer/zip filenames.
 #define TT_VERSION_MAJOR             5
 #define TT_VERSION_MINOR             8
 #define TT_VERSION_PATCH             0
-#define TT_VERSION_SUBSTR            "agent"
+#define TT_VERSION_SUBSTR            "agent-1.0.0"
 //#undef TT_VERSION_SUBSTR
 // SUBSTR が不要な時は undef する
 //  使用例 "dev", "RC", "RC2"
