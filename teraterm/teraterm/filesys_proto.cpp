@@ -91,6 +91,9 @@ typedef enum {
 static PFileVarProto FileVar = NULL;
 static PProtoDlg PtDlg = NULL;
 static BOOL cv_ProtoFlag = FALSE;
+/* Outcome of the most recent transfer for out-of-band observers (the agent):
+ * -1 none yet, 0 failed/cancelled, 1 succeeded. Set at the ProtoEnd funnel. */
+static int cv_ProtoLastResult = -1;
 
 static void _SetDlgTime(TFileVarProto *fv, DWORD elapsed, int bytes)
 {
@@ -438,12 +441,21 @@ void ProtoEnd(void)
 
 	CloseProtoDlg();
 
-	if ((FileVar!=NULL) && FileVar->Success)
+	if ((FileVar!=NULL) && FileVar->Success) {
+		cv_ProtoLastResult = 1;
 		EndDdeCmnd(1);
-	else
+	}
+	else {
+		cv_ProtoLastResult = 0;
 		EndDdeCmnd(0);
+	}
 
 	FreeFileVar_(&FileVar);
+}
+
+int ProtoGetLastResult(void)
+{
+	return cv_ProtoLastResult;
 }
 
 /* ダイアログを中央に移動する */

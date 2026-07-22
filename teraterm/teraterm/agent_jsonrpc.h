@@ -27,6 +27,7 @@ extern "C" {
 #define AGENT_ERR_NOTCONN   (-1)  /* no live connection (cv null / !Ready) */
 #define AGENT_ERR_NOTALLOWED (-2) /* send not armed for this session */
 #define AGENT_ERR_NOSESSION (-3)  /* unknown session id */
+#define AGENT_ERR_BUSY      (-4)  /* a file transfer is already in flight */
 
 typedef struct {
 	int ready;
@@ -34,6 +35,8 @@ typedef struct {
 	uint64_t offset; /* ring total; next unread offset */
 	int cols, rows;
 	char host[256];
+	int xfer_active;      /* non-zero while a file transfer is in flight */
+	int xfer_last_result; /* -1 none, 0 failed, 1 succeeded (valid when !active) */
 } AgentStatus;
 
 typedef struct {
@@ -75,6 +78,12 @@ typedef struct {
 
 	/* Send raw bytes. Returns bytes accepted or a negative AGENT_ERR_*. */
 	int (*send_bytes)(void *ctx, const char *session, const void *data, size_t len);
+
+	/* Start a ZMODEM send of the local file at pathU8 over the session's line
+	 * (binary != 0 selects binary mode). Async: returns 0 once the transfer is
+	 * started, or a negative AGENT_ERR_* (NOTALLOWED if send is not armed,
+	 * BUSY if a transfer is already in flight). */
+	int (*zmodem_send)(void *ctx, const char *session, const char *pathU8, int binary);
 } AgentBackend;
 
 /* Per-connection state threaded across requests on one socket. */

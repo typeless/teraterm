@@ -123,15 +123,17 @@ static void test_tools_list(void)
 	cJSON *r = cJSON_Parse(out);
 	cJSON *tools = cJSON_GetObjectItem(cJSON_GetObjectItem(r, "result"), "tools");
 	CHECK(cJSON_IsArray(tools));
-	CHECK(cJSON_GetArraySize(tools) == 7);
-	int found_send_line = 0;
+	CHECK(cJSON_GetArraySize(tools) == 8);
+	int found_send_line = 0, found_zmodem_send = 0;
 	cJSON *t;
 	cJSON_ArrayForEach(t, tools) {
 		const char *nm = cJSON_GetStringValue(cJSON_GetObjectItem(t, "name"));
 		CHECK(cJSON_GetObjectItem(t, "inputSchema") != NULL);
 		if (nm && strcmp(nm, "send_line") == 0) found_send_line = 1;
+		if (nm && strcmp(nm, "zmodem_send") == 0) found_zmodem_send = 1;
 	}
 	CHECK(found_send_line);
+	CHECK(found_zmodem_send);
 	cJSON_Delete(r);
 }
 

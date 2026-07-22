@@ -16,6 +16,8 @@
 #include "tttypes.h"
 #include "ttwinman.h" /* cv, ts, HVTWin */
 #include "ttcommon.h" /* CommBinaryOut, CommTextOutW */
+#include "codeconv.h" /* ToWcharU8 */
+#include "filesys.h"  /* ZMODEMStartSend, ProtoGetProtoFlag, ProtoGetLastResult */
 
 #include "agent_shmem.h"
 #include "agent_jsonrpc.h"
@@ -177,6 +179,11 @@ static int be_get_status(void *ctx, const char *session, AgentStatus *out)
 	if (slot == A.slot) {
 		out->cols = ts.TerminalWidth;
 		out->rows = ts.TerminalHeight;
+		out->xfer_active = ProtoGetProtoFlag() ? 1 : 0;
+		out->xfer_last_result = ProtoGetLastResult();
+	} else {
+		/* Another window's transfer state is not visible from this process. */
+		out->xfer_last_result = -1;
 	}
 	return 0;
 }
@@ -268,6 +275,41 @@ static int be_send_bytes(void *ctx, const char *session, const void *data, size_
 	return be_send_common(session, AGENT_CMD_BINARY, data, len);
 }
 
+static int be_zmodem_send(void *ctx, const char *session, const char *pathU8, int binary)
+{
+	(void)ctx;
+	int slot = resolve_slot(session);
+	if (slot < 0) {
+		return AGENT_ERR_NOSESSION;
+	}
+	AgentSession *s = &A.shm->sessions[slot];
+	if (!s->ready) {
+		return AGENT_ERR_NOTCONN;
+	}
+	if (!s->send_armed) {
+		return AGENT_ERR_NOTALLOWED;
+	}
+	/* Local window only. ZMODEMStartSend arms the protocol pump on this GUI
+	 * thread against this process's cv/FileVar, and the transfer's outcome is
+	 * observable only through this window's own status. A foreign window's
+	 * transfer would be neither driven nor visible here, so cross-window ZMODEM
+	 * is deferred (send_bytes/text still hand off via the shm queue). */
+	if (slot != A.slot) {
+		return AGENT_ERR_NOTALLOWED;
+	}
+	wchar_t *w = ToWcharU8(pathU8);
+	if (w == NULL) {
+		return AGENT_ERR_BUSY;
+	}
+	/* FALSE start => a transfer is already in flight (FileVar != NULL) or a
+	 * resource failure; both surface to the caller as "busy". A bad path is
+	 * NOT caught here -- the send starts, then fails via ProtoEnd, which the
+	 * caller observes as transfer.state=done, ok=false. */
+	BOOL ok = ZMODEMStartSend(w, binary ? 1 : 0, FALSE);
+	free(w);
+	return ok ? 0 : AGENT_ERR_BUSY;
+}
+
 static void init_backend(void)
 {
 	memset(&A.backend, 0, sizeof(A.backend));
@@ -280,6 +322,7 @@ static void init_backend(void)
 	A.backend.read_scrollback = be_read_scrollback;
 	A.backend.send_text = be_send_text;
 	A.backend.send_bytes = be_send_bytes;
+	A.backend.zmodem_send = be_zmodem_send;
 }
 
 /* ---- client bookkeeping ---- */

@@ -35,6 +35,13 @@ typedef struct {
 	size_t last_text_len;
 	unsigned char last_bytes[256];
 	size_t last_bytes_len;
+	/* recorded last zmodem_send */
+	char last_zsend_path[256];
+	int last_zsend_binary;
+	int last_zsend_called;
+	/* transfer state reported by get_status */
+	int xfer_active;
+	int xfer_last_result;
 } Fake;
 
 static int fk_check_token(void *ctx, const char *token)
@@ -54,6 +61,8 @@ static int fk_get_status(void *ctx, const char *session, AgentStatus *out)
 	out->cols = 80;
 	out->rows = 24;
 	strcpy(out->host, "example.com");
+	out->xfer_active = f->xfer_active;
+	out->xfer_last_result = f->xfer_last_result;
 	return 0;
 }
 
@@ -127,6 +136,21 @@ static int fk_send_bytes(void *ctx, const char *session, const void *data, size_
 	return (int)len;
 }
 
+static int fk_zmodem_send(void *ctx, const char *session, const char *pathU8, int binary)
+{
+	(void)session;
+	Fake *f = (Fake *)ctx;
+	if (!f->connected)
+		return AGENT_ERR_NOTCONN;
+	if (!f->allow_send)
+		return AGENT_ERR_NOTALLOWED;
+	strncpy(f->last_zsend_path, pathU8, sizeof(f->last_zsend_path) - 1);
+	f->last_zsend_path[sizeof(f->last_zsend_path) - 1] = 0;
+	f->last_zsend_binary = binary;
+	f->last_zsend_called = 1;
+	return 0; /* transfer started */
+}
+
 static void fill_backend(AgentBackend *be, Fake *f)
 {
 	memset(be, 0, sizeof(*be));
@@ -139,6 +163,7 @@ static void fill_backend(AgentBackend *be, Fake *f)
 	be->read_scrollback = fk_read_scrollback;
 	be->send_text = fk_send_text;
 	be->send_bytes = fk_send_bytes;
+	be->zmodem_send = fk_zmodem_send;
 }
 
 /* ---- helpers ---- */
@@ -326,6 +351,119 @@ static void test_send_not_allowed(void)
 	cJSON_Delete(r);
 }
 
+static void test_status_transfer(void)
+{
+	AgentConn conn = {0};
+	conn.authed = 1;
+	char buf[1024];
+	struct {
+		int active, last;
+		const char *state;
+		int has_ok, ok;
+	} cases[] = {
+		{0, -1, "idle", 0, 0},
+		{1, -1, "active", 0, 0},
+		{0, 1, "done", 1, 1},
+		{0, 0, "done", 1, 0},
+	};
+	for (int i = 0; i < 4; i++) {
+		Fake f = {0};
+		f.connected = 1;
+		f.xfer_active = cases[i].active;
+		f.xfer_last_result = cases[i].last;
+		AgentBackend be;
+		fill_backend(&be, &f);
+		cJSON *r = dispatch(&be, &conn, "{\"id\":30,\"method\":\"status\"}", buf, sizeof(buf));
+		CHECK(r != NULL);
+		cJSON *res = cJSON_GetObjectItem(r, "result");
+		cJSON *t = cJSON_GetObjectItem(res, "transfer");
+		CHECK(t != NULL);
+		cJSON *stt = cJSON_GetObjectItem(t, "state");
+		CHECK(cJSON_IsString(stt) && strcmp(stt->valuestring, cases[i].state) == 0);
+		cJSON *ok = cJSON_GetObjectItem(t, "ok");
+		if (cases[i].has_ok) {
+			CHECK(cJSON_IsBool(ok));
+			CHECK((cJSON_IsTrue(ok) ? 1 : 0) == cases[i].ok);
+		} else {
+			CHECK(ok == NULL);
+		}
+		cJSON_Delete(r);
+	}
+}
+
+static void test_zmodem_send(void)
+{
+	AgentConn conn = {0};
+	conn.authed = 1;
+	char buf[1024];
+
+	/* happy path: armed, path parsed, binary defaults on, backend invoked once */
+	{
+		Fake f = {0};
+		f.connected = 1;
+		f.allow_send = 1;
+		AgentBackend be;
+		fill_backend(&be, &f);
+		cJSON *r = dispatch(&be, &conn,
+			"{\"id\":20,\"method\":\"zmodem_send\",\"params\":{\"path\":\"C:\\\\payload\\\\fw.bin\"}}",
+			buf, sizeof(buf));
+		CHECK(r != NULL);
+		CHECK(result_ok(r));
+		CHECK(f.last_zsend_called == 1);
+		CHECK(strcmp(f.last_zsend_path, "C:\\payload\\fw.bin") == 0);
+		CHECK(f.last_zsend_binary == 1);
+		cJSON_Delete(r);
+	}
+
+	/* explicit binary:false is honored */
+	{
+		Fake f = {0};
+		f.connected = 1;
+		f.allow_send = 1;
+		AgentBackend be;
+		fill_backend(&be, &f);
+		cJSON *r = dispatch(&be, &conn,
+			"{\"id\":21,\"method\":\"zmodem_send\",\"params\":{\"path\":\"/tmp/x\",\"binary\":false}}",
+			buf, sizeof(buf));
+		CHECK(r != NULL);
+		CHECK(result_ok(r));
+		CHECK(f.last_zsend_called == 1);
+		CHECK(f.last_zsend_binary == 0);
+		cJSON_Delete(r);
+	}
+
+	/* gate: send not armed -> error, backend NOT invoked */
+	{
+		Fake f = {0};
+		f.connected = 1;
+		f.allow_send = 0;
+		AgentBackend be;
+		fill_backend(&be, &f);
+		cJSON *r = dispatch(&be, &conn,
+			"{\"id\":22,\"method\":\"zmodem_send\",\"params\":{\"path\":\"C:\\\\x\"}}",
+			buf, sizeof(buf));
+		CHECK(r != NULL);
+		CHECK(!result_ok(r));
+		CHECK(f.last_zsend_called == 0);
+		cJSON_Delete(r);
+	}
+
+	/* malformed: missing path -> error, backend NOT invoked */
+	{
+		Fake f = {0};
+		f.connected = 1;
+		f.allow_send = 1;
+		AgentBackend be;
+		fill_backend(&be, &f);
+		cJSON *r = dispatch(&be, &conn,
+			"{\"id\":23,\"method\":\"zmodem_send\",\"params\":{}}", buf, sizeof(buf));
+		CHECK(r != NULL);
+		CHECK(!result_ok(r));
+		CHECK(f.last_zsend_called == 0);
+		cJSON_Delete(r);
+	}
+}
+
 static void test_unknown_and_malformed(void)
 {
 	Fake f = {0};
@@ -403,6 +541,8 @@ int main(void)
 	test_send_bytes();
 	test_send_key();
 	test_send_not_allowed();
+	test_status_transfer();
+	test_zmodem_send();
 	test_unknown_and_malformed();
 	test_list_sessions();
 	test_b64_roundtrip();
