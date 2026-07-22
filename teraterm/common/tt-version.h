@@ -37,7 +37,7 @@
 #define TT_VERSION_MAJOR             5
 #define TT_VERSION_MINOR             8
 #define TT_VERSION_PATCH             0
-#define TT_VERSION_SUBSTR            "agent-1.0.0"
+#define TT_VERSION_SUBSTR            "agent-1.1.0"
 //#undef TT_VERSION_SUBSTR
 // SUBSTR が不要な時は undef する
 //  使用例 "dev", "RC", "RC2"
