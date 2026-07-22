@@ -167,6 +167,8 @@ static const char *agent_err_msg(int rc)
 		return "not allowed";
 	case AGENT_ERR_NOSESSION:
 		return "unknown session";
+	case AGENT_ERR_BUSY:
+		return "transfer in progress";
 	default:
 		return rc < 0 ? "operation failed" : NULL;
 	}
@@ -221,6 +223,18 @@ static cJSON *call_status(const AgentBackend *be, const cJSON *params, const cha
 	cJSON_AddNumberToObject(r, "offset", (double)st.offset);
 	cJSON_AddNumberToObject(r, "cols", st.cols);
 	cJSON_AddNumberToObject(r, "rows", st.rows);
+
+	/* Transfer state as a tagged union: "ok" is meaningful only once done. */
+	cJSON *t = cJSON_CreateObject();
+	if (st.xfer_active) {
+		cJSON_AddStringToObject(t, "state", "active");
+	} else if (st.xfer_last_result < 0) {
+		cJSON_AddStringToObject(t, "state", "idle");
+	} else {
+		cJSON_AddStringToObject(t, "state", "done");
+		cJSON_AddBoolToObject(t, "ok", st.xfer_last_result == 1);
+	}
+	cJSON_AddItemToObject(r, "transfer", t);
 	return r;
 }
 
@@ -381,6 +395,28 @@ static cJSON *call_send_key(const AgentBackend *be, const cJSON *params, const c
 	return r;
 }
 
+static cJSON *call_zmodem_send(const AgentBackend *be, const cJSON *params, const char **err)
+{
+	const cJSON *pj = cJSON_GetObjectItem(params, "path");
+	if (!cJSON_IsString(pj) || pj->valuestring[0] == 0) {
+		*err = "path required";
+		return NULL;
+	}
+	int binary = 1;
+	const cJSON *bj = cJSON_GetObjectItem(params, "binary");
+	if (cJSON_IsBool(bj))
+		binary = cJSON_IsTrue(bj) ? 1 : 0;
+
+	int rc = be->zmodem_send(be->ctx, param_session(params), pj->valuestring, binary);
+	*err = agent_err_msg(rc);
+	if (*err != NULL)
+		return NULL;
+
+	cJSON *r = cJSON_CreateObject();
+	cJSON_AddTrueToObject(r, "started");
+	return r;
+}
+
 cJSON *agent_call(const AgentBackend *be, const char *method, const cJSON *params, const char **err)
 {
 	*err = NULL;
@@ -398,6 +434,8 @@ cJSON *agent_call(const AgentBackend *be, const char *method, const cJSON *param
 		return call_send_bytes(be, params, err);
 	if (strcmp(method, "send_key") == 0)
 		return call_send_key(be, params, err);
+	if (strcmp(method, "zmodem_send") == 0)
+		return call_zmodem_send(be, params, err);
 	*err = "unknown method";
 	return NULL;
 }

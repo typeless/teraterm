@@ -44,6 +44,7 @@ void FileSendPause(BOOL Pause);
 
 // filesys_proto.cpp
 BOOL ProtoGetProtoFlag(void);
+int ProtoGetLastResult(void); /* -1 none, 0 failed, 1 succeeded */
 BOOL IsFileVarNULL(void);
 void ProtoEnd(void);
 int ProtoDlgParse(void);

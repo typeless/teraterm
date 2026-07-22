@@ -57,6 +57,12 @@ static const McpTool TOOLS[] = {
 	{"send_key", "Send a named key (enter, tab, esc, ctrl-c, up, down, left, right, ...).",
 	 "{\"type\":\"object\",\"properties\":{\"session\":{\"type\":\"string\"},"
 	 "\"key\":{\"type\":\"string\"}},\"required\":[\"key\"]}"},
+	{"zmodem_send",
+	 "Start a ZMODEM send of a local file over the connection (the peer must be "
+	 "running a ZMODEM receiver, e.g. 'rz'). Async: returns once started; poll "
+	 "status.transfer for state (active -> done) and ok.",
+	 "{\"type\":\"object\",\"properties\":{\"session\":{\"type\":\"string\"},"
+	 "\"path\":{\"type\":\"string\"},\"binary\":{\"type\":\"boolean\"}},\"required\":[\"path\"]}"},
 };
 
 static cJSON *build_tools_array(void)
